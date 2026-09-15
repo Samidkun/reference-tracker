@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Blocks: secrets (always) + lint/format when available.
+# FAIL-CLOSED on secrets: if no scanner can run, the commit is blocked.
+set -uo pipefail
+fail=0
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+# --- secret scan: gitleaks if present, else the bundled fallback ---
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --redact --no-banner \
+    || { echo "BLOCKED: gitleaks found a secret"; fail=1; }
+else
+  scanner="$(dirname "$0")/scan_secrets.py"
+  if [ -f "$scanner" ] && command -v python3 >/dev/null 2>&1; then
+    echo "note: gitleaks absent - using bundled scanner"
+    # shellcheck disable=SC2086
+    python3 "$scanner" $staged \
+      || { echo "BLOCKED: bundled scanner found a possible secret"; fail=1; }
+  else
+    echo "BLOCKED: no secret scanner available (install gitleaks)"
+    fail=1
+  fi
+fi
+
+# --- lint when the project defines it ---
+if [ -f package.json ] && command -v npm >/dev/null 2>&1; then
+  if grep -q '"lint"' package.json 2>/dev/null; then
+    npm run --silent lint || { echo "BLOCKED: lint failed"; fail=1; }
+  fi
+fi
+
+exit $fail

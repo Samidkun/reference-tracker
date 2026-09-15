@@ -1,0 +1,43 @@
+name: CI
+on:
+  push: { branches: [main, master] }
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+
+      - uses: actions/setup-node@v4
+        if: hashFiles('package.json') != ''
+        with: { node-version: 20, cache: npm }
+
+      - name: Install
+        if: hashFiles('package.json') != ''
+        run: npm ci || npm install
+
+      - name: Lint
+        if: hashFiles('package.json') != ''
+        run: npm run --if-present lint
+
+      - name: Typecheck
+        if: hashFiles('package.json') != ''
+        run: npm run --if-present typecheck
+
+      - name: Test
+        if: hashFiles('package.json') != ''
+        run: npm run --if-present test
+
+      - name: Dependency audit
+        if: hashFiles('package.json') != ''
+        run: npm audit --audit-level=high || true
+
+      - name: Build
+        if: hashFiles('package.json') != ''
+        run: npm run --if-present build
