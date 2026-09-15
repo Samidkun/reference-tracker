@@ -35,10 +35,14 @@ PATTERNS = [
 
 # generic assignment of a secret-ish name to a literal value.
 # Handles quoted ("x"), single-quoted ('x'), and bare .env style (KEY=value).
+#
+# The (?!:) guard is load-bearing: without it, PHP/JS static-call syntax
+# (Password::defaults(), Cache::get(), Foo::BAR) reads as "name = value" and
+# flags every framework file that mentions the word "password".
 GENERIC = re.compile(
     r"(?i)(?<![A-Za-z0-9])(api[_-]?key|secret|passwd|password|token|private[_-]?key|access[_-]?key)"
     r"(?![A-Za-z0-9_])"
-    r"\s*[:=]\s*(?:['\"]([^'\"]{8,})['\"]|([^\s'\"#]{8,}))"
+    r"\s*[:=]\s*(?!:)(?:['\"]([^'\"]{8,})['\"]|([^\s'\"#]{8,}))"
 )
 
 SKIP_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf", ".zip", ".gz",
@@ -67,6 +71,17 @@ def is_placeholder(val: str) -> bool:
     return bool(PLACEHOLDER.match(v))
 
 
+# Real secrets are opaque literals. Code is not: a right-hand side containing
+# static-access (::), member access (->), a call ( ), an index/array, a
+# variable ($), or a statement terminator is an expression, not a credential.
+# Without this, `$this->password = Password::MIN_LENGTH;` reads as a leak.
+CODE_LIKE = re.compile(r"::|->|[()\[\]{};$]|\bnew\s")
+
+
+def is_code(val: str) -> bool:
+    return bool(CODE_LIKE.search(val))
+
+
 def scan(path: str):
     findings = []
     base = os.path.basename(path)
@@ -86,7 +101,7 @@ def scan(path: str):
                         findings.append((lineno, label, m.group(0)[:12] + "..."))
                 for m in GENERIC.finditer(line):
                     val = m.group(2) or m.group(3) or ""
-                    if not is_placeholder(val):
+                    if not is_placeholder(val) and not is_code(val):
                         findings.append((lineno, f"generic {m.group(1)}", val[:6] + "..."))
     except (OSError, UnicodeDecodeError):
         return findings

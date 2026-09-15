@@ -66,6 +66,15 @@ class BibtexParser
                 break;
             }
 
+            // Between '@' and '{' there must be nothing but a type name.
+            // Without this, stray text like "@@@garbage@@@" makes the scanner
+            // swallow the '{' of the NEXT valid entry and discard it too.
+            $typeName = substr($bibtex, $at + 1, $brace - $at - 1);
+            if (! preg_match('/^[A-Za-z]+[ \t]*$/', $typeName)) {
+                $i = $at + 1;
+                continue;
+            }
+
             $depth = 0;
             $j = $brace;
             for (; $j < $len; $j++) {

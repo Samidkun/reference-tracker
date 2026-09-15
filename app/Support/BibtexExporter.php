@@ -45,7 +45,13 @@ class BibtexExporter
     private function entry(array $ref, ?string $key): string
     {
         $type = self::TYPE_MAP[$ref['type'] ?? ''] ?? 'misc';
-        $citeKey = $key ?: $this->keyFor($ref);
+
+        // Priority: explicit override > key stored on the row > derived.
+        // A key that came in via BibTeX import MUST survive an export,
+        // otherwise round-tripping a .bib file silently renames every entry.
+        $citeKey = $key
+            ?: ($ref['cite_key'] ?? null)
+            ?: $this->keyFor($ref);
 
         $fields = [
             'title'  => $ref['title'] ?? null,
