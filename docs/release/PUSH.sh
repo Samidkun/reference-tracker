@@ -36,12 +36,38 @@ done < <(git rev-list --objects --all | awk '{print $1}' | sort -u)
 echo "  ok: history is clean"
 
 # 3. tests green
-./vendor/bin/phpunit --quiet >/dev/null 2>&1 || { echo "REFUSING: PHP tests fail"; exit 1; }
+# NOTE: do NOT use `--quiet`. On PHPUnit 12 it exits 2 even when the suite is
+# green (verified: exit 0 without it, exit 2 with it), so a `--quiet` check
+# refuses to release a perfectly healthy tree. Silencing output and reading
+# the real exit code is the reliable form.
+if ! ./vendor/bin/phpunit >/tmp/_phpunit.log 2>&1; then
+  echo "REFUSING: PHP tests fail (see /tmp/_phpunit.log)"
+  tail -5 /tmp/_phpunit.log
+  exit 1
+fi
 echo "  ok: PHP tests pass"
 
 # 4. built assets present
 [ -f public/build/manifest.json ] || { echo "REFUSING: run npm run build first"; exit 1; }
 echo "  ok: vite manifest present"
+
+# 4b. no stale dev-server marker (it makes the app serve an empty shell)
+if [ -f public/hot ]; then
+  echo "REFUSING: public/hot exists — the app would point at a dead dev server"
+  exit 1
+fi
+echo "  ok: no stale public/hot"
+
+# 4c. E2E green (skippable only by explicitly asking)
+if [ "${SKIP_E2E:-0}" = "1" ]; then
+  echo "  !! E2E SKIPPED on request — this is a weaker gate"
+elif ! npx playwright test --reporter=line >/tmp/_e2e.log 2>&1; then
+  echo "REFUSING: E2E tests fail (see /tmp/_e2e.log)"
+  tail -8 /tmp/_e2e.log
+  exit 1
+else
+  echo "  ok: E2E tests pass"
+fi
 
 # 5. working tree clean
 [ -z "$(git status --porcelain)" ] || { echo "REFUSING: uncommitted changes"; exit 1; }
