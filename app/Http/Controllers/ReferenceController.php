@@ -86,7 +86,16 @@ class ReferenceController extends Controller
 
         $reference->update($request->safe()->except('tags'));
 
-        $this->syncOwnedTags($reference, $request->validated('tags', []));
+        // Only touch tags if the client actually sent the field.
+        //
+        // A partial update (PUT without `tags`) used to call sync([]) and
+        // silently detach every tag. The browser form always sends `tags`, so
+        // the UI hid the bug - but curl, an API consumer, or a future mobile
+        // client would wipe a user's tags by omitting one key. Absent means
+        // "leave alone"; an explicit empty array means "clear".
+        if ($request->has('tags')) {
+            $this->syncOwnedTags($reference, $request->validated('tags', []));
+        }
 
         return redirect()->route('references.index')->with('success', 'Reference updated.');
     }
@@ -147,8 +156,10 @@ class ReferenceController extends Controller
             $seen = array_flip($seen);
 
             foreach ($entries as $entry) {
-                $doi = $entry['doi'] !== null && $entry['doi'] !== ''
-                    ? mb_strtolower((string) $entry['doi'])
+                $fields = $this->sanitiseImportedEntry($entry);
+
+                $doi = $fields['doi'] !== null
+                    ? mb_strtolower($fields['doi'])
                     : null;
 
                 if ($doi !== null && isset($seen[$doi])) {
@@ -159,14 +170,7 @@ class ReferenceController extends Controller
 
                 Reference::create([
                     'user_id'  => $userId,
-                    'title'    => mb_substr($entry['title'] ?: 'Untitled', 0, 500),
-                    'authors'  => $entry['authors'] ?: [],
-                    'year'     => $entry['year'],
-                    'type'     => $entry['type'],
-                    'doi'      => $entry['doi'],
-                    'url'      => $entry['url'] !== null ? mb_substr((string) $entry['url'], 0, 2048) : null,
-                    'notes'    => $entry['notes'],
-                    'cite_key' => $entry['key'] !== null ? mb_substr((string) $entry['key'], 0, 255) : null,
+                    ...$fields,
                 ]);
 
                 if ($doi !== null) {
@@ -194,6 +198,79 @@ class ReferenceController extends Controller
         }
 
         return response()->json($result);
+    }
+
+    /**
+     * Coerce one parsed .bib entry into a row the schema will actually accept.
+     *
+     * WHY THIS EXISTS: the manual form validates every field, but the import
+     * path did not — so a .bib file could hand the database values the schema
+     * rejects, and the user got a raw 500 with a 1.2 MB stack trace instead of
+     * an imported library. Observed failures before this:
+     *
+     *   - year = 999999  -> "Out of range" (column is UNSIGNED SMALLINT, max 65535)
+     *   - doi  = ''      -> duplicate-key violation (' ' is not NULL, so two
+     *                       empty DOIs collide on unique(user_id, doi))
+     *   - author = 100 kB -> stored verbatim, no length limit at all
+     *   - title > 255    -> column overflow
+     *
+     * The parser stays tolerant (a malformed entry is skipped, not fatal), so
+     * the sanitiser's job is to keep the GOOD entry and drop only the part
+     * that cannot be stored — never to reject the whole file.
+     *
+     * @param  array<string, mixed>  $entry
+     * @return array<string, mixed>
+     */
+    private function sanitiseImportedEntry(array $entry): array
+    {
+        $maxYear = (int) date('Y') + 1;
+
+        $year = $entry['year'] ?? null;
+        $year = (is_int($year) || (is_string($year) && ctype_digit($year)))
+            ? (int) $year
+            : null;
+
+        // Out-of-range years become "unknown" rather than crashing the import.
+        if ($year !== null && ($year < 1000 || $year > $maxYear)) {
+            $year = null;
+        }
+
+        $authors = [];
+        foreach ((array) ($entry['authors'] ?? []) as $author) {
+            $author = trim(mb_substr((string) $author, 0, 200));
+            if ($author !== '') {
+                $authors[] = $author;
+            }
+        }
+        $authors = array_slice($authors, 0, 50); // matches the form's max:50
+
+        // A DOI longer than the column is worse than no DOI: truncating it
+        // would produce a DOI that looks valid but points nowhere.
+        $doi = $entry['doi'] ?? null;
+        $doi = $doi !== null ? trim((string) $doi) : null;
+        if ($doi === '' || $doi === null || mb_strlen($doi) > 255) {
+            $doi = null;
+        }
+
+        return [
+            'title'    => mb_substr(trim((string) ($entry['title'] ?? '')) ?: 'Untitled', 0, 500),
+            'authors'  => $authors,
+            'year'     => $year,
+            'type'     => in_array($entry['type'] ?? '', ['journal', 'book', 'conference', 'thesis', 'web'], true)
+                ? $entry['type']
+                : 'web',
+            'doi'      => $doi,
+            'url'      => isset($entry['url']) && $entry['url'] !== ''
+                ? mb_substr((string) $entry['url'], 0, 2048)
+                : null,
+            // matches the form's max:20000
+            'notes'    => isset($entry['notes']) && $entry['notes'] !== ''
+                ? mb_substr((string) $entry['notes'], 0, 20000)
+                : null,
+            'cite_key' => isset($entry['key']) && $entry['key'] !== ''
+                ? mb_substr((string) $entry['key'], 0, 255)
+                : null,
+        ];
     }
 
     /**

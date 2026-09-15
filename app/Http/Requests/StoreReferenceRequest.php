@@ -53,4 +53,20 @@ class StoreReferenceRequest extends FormRequest
             'doi.unique' => 'You already have a reference with this DOI.',
         ];
     }
+
+    /**
+     * DOIs are case-insensitive by specification (RFC 5870): 10.1000/ABC and
+     * 10.1000/abc are the same DOI. The import path lowercased them when
+     * deduping but the form did not, so the same paper could be saved twice
+     * through the UI. Normalise on the way in so both paths agree and the
+     * unique index means what it says.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('doi') && is_string($this->input('doi'))) {
+            $doi = trim($this->input('doi'));
+
+            $this->merge(['doi' => $doi === '' ? null : mb_strtolower($doi)]);
+        }
+    }
 }
