@@ -73,7 +73,7 @@ class SecurityHeaders
             $headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains';
         }
 
-        $headers['Content-Security-Policy'] = $this->contentSecurityPolicy($nonce);
+        $headers['Content-Security-Policy'] = $this->contentSecurityPolicy($nonce, $request);
 
         foreach ($headers as $name => $value) {
             // Never clobber a header the app or a dependency already set.
@@ -91,7 +91,7 @@ class SecurityHeaders
      * The nonce is a PARAMETER, deliberately: it is per-request data, and
      * reading it back out of global state is how it silently became empty.
      */
-    private function contentSecurityPolicy(string $nonce): string
+    private function contentSecurityPolicy(string $nonce, Request $request): string
     {
         // connect-src must include the Vite websocket in local dev, or HMR
         // is blocked. Building it conditionally keeps the directive appearing
@@ -132,7 +132,17 @@ class SecurityHeaders
             // bundle; without it the hashed bundle URL is not implicitly
             // trusted in some browsers.
             $directives[] = "script-src 'self' 'nonce-{$nonce}' 'strict-dynamic'";
-            $directives[] = "upgrade-insecure-requests";
+            // Only meaningful - and only SAFE - when the app is genuinely
+            // served over HTTPS. Over plain HTTP this directive makes the
+            // browser rewrite every navigation and subresource to https://,
+            // which fails against an http-only server: the first page renders,
+            // then every click dies with ERR_CONNECTION_CLOSED and no visible
+            // error. A production rehearsal caught it (21 of 25 E2E tests
+            // failed) on a deployment that terminates TLS at a proxy which
+            // does not forward X-Forwarded-Proto.
+            if ($request->isSecure()) {
+                $directives[] = "upgrade-insecure-requests";
+            }
         }
 
         return implode('; ', $directives);

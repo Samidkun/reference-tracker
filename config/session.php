@@ -172,10 +172,28 @@ return [
     |
     */
 
-    // Send the cookie over HTTPS only. Defaults to ON in production and OFF
-    // elsewhere, because a Secure cookie is never sent over http://localhost
-    // and would break local login. Override with SESSION_SECURE_COOKIE.
-    'secure' => env('SESSION_SECURE_COOKIE', env('APP_ENV', 'production') === 'production'),
+    // Send the cookie over HTTPS only.
+    //
+    // Resolved PER REQUEST by App\Http\Middleware\ForceHttpsSessionCookie,
+    // not here. Config is loaded at boot - including for CLI commands, where no
+    // request exists - so calling request() in this file throws
+    // "Target class [request] does not exist" and breaks every artisan command.
+    //
+    // The value below is the static fallback: an explicit override if set,
+    // otherwise false. The middleware upgrades it to true when the request
+    // actually arrived over TLS (proxy-aware).
+    //
+    // Why not key off APP_ENV=production, which is what this file used to do:
+    // a production app reached over plain HTTP then sets `Secure` on a response
+    // delivered over http://, and browsers MUST drop such a cookie. The session
+    // never persists and login is impossible, with no error anywhere. Caught by
+    // the production rehearsal - 21 of 25 E2E tests failed, every one needing a
+    // session.
+    'secure' => env('SESSION_SECURE_COOKIE', false),
+
+    // Whether the operator pinned the flag. null = "decide per request from the
+    // scheme"; true/false = honour the explicit choice.
+    'secure_explicit' => env('SESSION_SECURE_COOKIE'),
 
     /*
     |--------------------------------------------------------------------------

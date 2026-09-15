@@ -35,6 +35,12 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
         ]);
 
+        // Must run BEFORE the session middleware writes its cookie, so it has
+        // to be prepended rather than appended to the web group.
+        $middleware->web(prepend: [
+            \App\Http\Middleware\ForceHttpsSessionCookie::class,
+        ]);
+
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,
         ]);

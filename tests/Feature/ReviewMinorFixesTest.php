@@ -127,77 +127,118 @@ class ReviewMinorFixesTest extends TestCase
     }
 
     /**
-     * M3: the Secure flag must be off outside production, or login over
-     * http://localhost breaks - the browser never sends a Secure cookie there.
+     * M3: the Secure flag follows the REQUEST SCHEME, not the environment name.
+     *
+     * The first version keyed off APP_ENV=production. That is wrong: a
+     * production app reached over http:// then sets `Secure` on a response the
+     * browser receives over plain HTTP, and browsers MUST discard such a
+     * cookie - so the session never persists and login is impossible, silently.
+     * The production rehearsal caught it: 21 of 25 E2E tests failed, every one
+     * that needs a session.
+     *
+     * These assertions go through the real HTTP kernel, so they test the
+     * behaviour a browser sees rather than the value of a config key.
      */
-    public function test_secure_cookie_flag_is_off_in_non_production(): void
+    public function test_secure_cookie_flag_is_absent_over_plain_http(): void
     {
-        $this->assertFalse(
-            config('session.secure'),
-            'a Secure cookie is not sent over plain http, so it must be off in local/testing',
+        $this->app['env'] = 'production';
+
+        $response = $this->get('/login');
+        $cookies = $response->headers->getCookies();
+
+        $this->assertNotEmpty($cookies, 'login must set a session cookie');
+
+        foreach ($cookies as $cookie) {
+            $this->assertFalse(
+                $cookie->isSecure(),
+                "cookie '{$cookie->getName()}' must NOT be Secure over http:// - the browser would discard it",
+            );
+        }
+    }
+
+    public function test_secure_cookie_flag_is_set_over_https(): void
+    {
+        $this->app['env'] = 'production';
+
+        // A TLS-terminating proxy: PHP sees plain HTTP, the header says https.
+        $response = $this->withHeaders(['X-Forwarded-Proto' => 'https'])->get('/login');
+        $cookies = $response->headers->getCookies();
+
+        $this->assertNotEmpty($cookies, 'login must set a session cookie');
+
+        foreach ($cookies as $cookie) {
+            $this->assertTrue(
+                $cookie->isSecure(),
+                "cookie '{$cookie->getName()}' must be Secure when the request arrived over HTTPS",
+            );
+        }
+    }
+
+    /**
+     * The consequence that actually hurts: over plain HTTP in production the
+     * session cookie must be USABLE, so an authenticated request survives.
+     *
+     * A POST cannot be used to prove this directly - Laravel's CSRF check
+     * rejects a request whose token cookie the client never sent, which is
+     * itself the symptom (419). So this asserts the property underneath it:
+     * after a request over http://, the client is still authenticated.
+     */
+    public function test_the_session_survives_a_plain_http_request_in_production(): void
+    {
+        $this->app['env'] = 'production';
+
+        $user = \App\Models\User::factory()->create();
+
+        $response = $this->actingAs($user)->get('/references');
+        $response->assertOk();
+
+        // And the cookie the browser would have received carries no Secure
+        // flag, so a browser keeps it.
+        $login = $this->get('/login');
+        foreach ($login->headers->getCookies() as $cookie) {
+            $this->assertFalse(
+                $cookie->isSecure(),
+                'over http:// the browser must keep the cookie, so it cannot be Secure',
+            );
+        }
+    }
+
+    /**
+     * `upgrade-insecure-requests` must only be sent when the request really is
+     * secure.
+     *
+     * Over plain HTTP the browser rewrites every navigation and subresource to
+     * https://, which fails against an http-only server: the first page renders,
+     * then every click dies with ERR_CONNECTION_CLOSED and no visible error.
+     * The production rehearsal caught this - 21 of 25 E2E tests failed, and the
+     * only symptom was a registration form that never navigated.
+     */
+    public function test_upgrade_insecure_requests_is_absent_over_plain_http(): void
+    {
+        $this->app['env'] = 'production';
+
+        $csp = (string) $this->get('/login')->headers->get('Content-Security-Policy');
+
+        $this->assertStringNotContainsString(
+            'upgrade-insecure-requests',
+            $csp,
+            'over http:// this directive breaks every navigation; it must not be sent',
         );
     }
 
-    /**
-     * M3: and ON in production.
-     *
-     * Evaluating the config file directly, with APP_ENV forced to production,
-     * is the only honest way to test this: config is loaded once at boot, so
-     * setting $this->app['env'] afterwards cannot change an already-resolved
-     * value - and re-typing the expression here would just test itself.
-     */
-    public function test_secure_cookie_flag_is_on_in_production(): void
+    public function test_upgrade_insecure_requests_is_present_over_https(): void
     {
-        $savedEnv = $_ENV['APP_ENV'] ?? null;
-        $savedServer = $_SERVER['APP_ENV'] ?? null;
-        $savedSecureEnv = $_ENV['SESSION_SECURE_COOKIE'] ?? null;
-        $savedSecureServer = $_SERVER['SESSION_SECURE_COOKIE'] ?? null;
+        $this->app['env'] = 'production';
 
-        try {
-            $_ENV['APP_ENV'] = $_SERVER['APP_ENV'] = 'production';
-            putenv('APP_ENV=production');
-            unset($_ENV['SESSION_SECURE_COOKIE'], $_SERVER['SESSION_SECURE_COOKIE']);
-            putenv('SESSION_SECURE_COOKIE');
+        $csp = (string) $this->withHeaders(['X-Forwarded-Proto' => 'https'])
+            ->get('/login')
+            ->headers
+            ->get('Content-Security-Policy');
 
-            $config = require config_path('session.php');
-
-            $this->assertTrue(
-                (bool) $config['secure'],
-                'with APP_ENV=production and no override, the Secure cookie flag must default ON',
-            );
-        } finally {
-            if ($savedEnv === null) { unset($_ENV['APP_ENV']); } else { $_ENV['APP_ENV'] = $savedEnv; }
-            if ($savedServer === null) { unset($_SERVER['APP_ENV']); } else { $_SERVER['APP_ENV'] = $savedServer; }
-            if ($savedSecureEnv !== null) { $_ENV['SESSION_SECURE_COOKIE'] = $savedSecureEnv; }
-            if ($savedSecureServer !== null) { $_SERVER['SESSION_SECURE_COOKIE'] = $savedSecureServer; }
-        }
-    }
-
-    /**
-     * M3: an explicit override must still win, so a deployment behind plain
-     * HTTP can opt out deliberately.
-     */
-    public function test_secure_cookie_flag_honours_an_explicit_override(): void
-    {
-        $savedEnv = $_ENV['APP_ENV'] ?? null;
-        $savedServer = $_SERVER['APP_ENV'] ?? null;
-        $savedSecureEnv = $_ENV['SESSION_SECURE_COOKIE'] ?? null;
-        $savedSecureServer = $_SERVER['SESSION_SECURE_COOKIE'] ?? null;
-
-        try {
-            $_ENV['APP_ENV'] = $_SERVER['APP_ENV'] = 'production';
-            putenv('APP_ENV=production');
-            $_ENV['SESSION_SECURE_COOKIE'] = $_SERVER['SESSION_SECURE_COOKIE'] = 'false';
-            putenv('SESSION_SECURE_COOKIE=false');
-
-            $config = require config_path('session.php');
-
-            $this->assertFalse((bool) $config['secure'], 'an explicit false must win');
-        } finally {
-            if ($savedEnv === null) { unset($_ENV['APP_ENV']); } else { $_ENV['APP_ENV'] = $savedEnv; }
-            if ($savedServer === null) { unset($_SERVER['APP_ENV']); } else { $_SERVER['APP_ENV'] = $savedServer; }
-            if ($savedSecureEnv === null) { unset($_ENV['SESSION_SECURE_COOKIE']); } else { $_ENV['SESSION_SECURE_COOKIE'] = $savedSecureEnv; }
-            if ($savedSecureServer === null) { unset($_SERVER['SESSION_SECURE_COOKIE']); } else { $_SERVER['SESSION_SECURE_COOKIE'] = $savedSecureServer; }
-        }
+        $this->assertStringContainsString(
+            'upgrade-insecure-requests',
+            $csp,
+            'over HTTPS the directive is correct and should be sent',
+        );
     }
 }

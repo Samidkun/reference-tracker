@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-const E2E_DB = 'reference_tracker_e2e';
+const E2E_DB = process.env.E2E_DB || 'reference_tracker_e2e';
 
 /**
  * Rebuild the E2E database before every run.
