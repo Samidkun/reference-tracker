@@ -20,20 +20,22 @@
 | 3 — Spec | ✅ | Design contract = spec |
 | 4 — Plan | ✅ | Dikerjakan langsung, solo |
 | 5 — Workspace | ✅ | `main`, solo, tanpa worktree |
-| 6 — TDD | ✅ **5 cycle** | 72 test, 206 assertions |
+| 6 — TDD | ✅ **5 cycle** | 107 test, 293 assertions |
 | 7 — Execute | ✅ | UI + logic + HTTP lengkap |
-| 8 — Review | ⚠️ | Dilakukan sendiri (bukan reviewer independen) — lihat retro Q2 |
-| 9 — Debug | ✅ | **10 bug** ketemu & diperbaiki |
-| 10 — Prod Hardening | ⬜ | Belum |
-| 11 — Docs + E2E | 🔶 | **E2E 11/11 ✅**; docs (End-User Guide + Runbook) belum |
-| 12 — UAT | ⬜ | Belum |
-| 13 — Verify | ✅ | Suite dijalankan ulang, output dibaca |
-| 14 — Ship | ⬜ | Belum (nunggu Stage 10/11 selesai) |
+| 8 — Review | ✅ | **2 reviewer independen**. Backend nemu 4 bug baru |
+| 9 — Debug | ✅ | **17 bug** ketemu & diperbaiki |
+| 10 — Prod Hardening | ✅ | Search, import atomik, security headers + CSP |
+| 11 — Docs + E2E | ✅ | **E2E 11/11** + End-User Guide + Runbook |
+| 12 — UAT | ⬜ | Belum — butuh stakeholder kalau ada handover |
+| 13 — Verify | ✅ | Suite + HTTP nyata dijalankan ulang, output dibaca |
+| 14 — Ship | 🔶 | Repo siap; nunggu keputusan lu |
 | 16 — Retro | ✅ | `~/.hermes/retros/2026-09.md` |
+
+**Hasil akhir: 107 PHP test / 293 assertions ✅ · 11 E2E ✅ · 10 commit**
 
 ---
 
-## 🔴 10 BUG NYATA
+## 🔴 17 BUG NYATA
 
 Semua ketemu karena dijalankan di project beneran. **Yang paling penting: 72 test backend hijau sementara UI-nya gak bisa nyimpen data sama sekali.**
 
@@ -89,6 +91,52 @@ Laravel default SQLite `:memory:`; **`pdo_sqlite` tidak terpasang**.
 
 ### Bonus — `public/hot` nyangkut
 Marker dev server Breeze bikin Laravel arahin asset ke Vite yang gak jalan → shell kosong. Sekarang dihapus otomatis di `globalSetup`.
+
+---
+
+### #11 — Search case-sensitive (Stage 10, hasil probing)
+**Dampak: separuh fitur pencarian rusak diam-diam.**
+`LIKE` di kolom `authors` (JSON) dibandingkan byte-wise, gak peduli collation. Cari `vaswani` → 0 hasil; `Vaswani` → ketemu.
+**Fix:** `LOWER()` di kedua sisi untuk semua kolom.
+
+### #12 — DOI duplikat = 500 mentah (Stage 10)
+**Dampak: user gak tau salahnya apa.**
+Unique index `(user_id, doi)` meledak jadi 500, bukan error validasi.
+**Fix:** `Rule::unique` per-user + skip duplikat saat import dengan laporan jumlah.
+
+### #13 — Import tidak atomik (Stage 10)
+**Dampak: impor 40 entri bisa nyangkut di tengah, data separuh tersimpan tanpa penjelasan.**
+**Fix:** `DB::transaction` — semua atau tidak sama sekali.
+
+### #14 — Validasi lebih longgar dari skema (Stage 10)
+**Dampak: title 256-500 char lolos validasi lalu mati di database.**
+Validasi bilang `max:500`, kolom `VARCHAR(255)`.
+**Fix:** kolom diperlebar ke 500.
+
+### #15 — Security headers tidak ada sama sekali (Stage 10)
+**Dampak: clickjacking, MIME sniffing, referrer leak — semua terbuka.**
+**Fix:** middleware global (termasuk halaman error) + CSP.
+
+### #16 — CSP `connect-src` duplikat (Stage 10, ketemu saat verifikasi docs)
+**Dampak: browser cuma pakai direktif terakhir, yang pertama dibuang diam-diam.**
+**Fix:** dibangun sekali secara kondisional. Test-nya dibuktiin bisa gagal.
+
+### #17 — Import path TIDAK divalidasi + partial update hapus tag (Stage 8, reviewer independen)
+**Dampak: 500 mentah + stack trace 1,27 MB; tag user bisa kehapus.**
+Form memvalidasi, import tidak — skema sama, dua trust boundary, satu tak terjaga:
+- `year=999999` → 500 "Out of range"
+- `doi={}` dua kali → 500 duplicate-key (`''` bukan `NULL`)
+- author 100 kB → **tersimpan apa adanya** (storedLen=100004)
+- PUT tanpa field `tags` → **semua tag terhapus**
+
+**Fix:** `sanitiseImportedEntry()` (clamp semua field ke yang diterima skema); sync tag hanya kalau key-nya benar-benar dikirim.
+**Bukti:** sanitiser di-revert → 7 dari 10 test merah.
+
+### Bonus — route `/storage/{path}` publik (Stage 8, reviewer)
+**Kelihatan seperti arbitrary file upload** (`PUT storage/{path}`, tanpa middleware).
+**Diuji langsung: SEMUA 403** — unsigned GET/PUT, `shell.php`, path traversal `../.env`.
+**Ternyata aman**, karena `visibility` tidak di-set → default `private` → butuh signed URL.
+**Tapi aman karena kebetulan default.** Ditambah 6 test yang mengunci perilaku ini; dibuktiin merah kalau `visibility => 'public'` ditambahkan.
 
 ---
 
