@@ -29,3 +29,10 @@ Thumbs.db
 /test-results
 /playwright-report
 /storage/playwright
+
+# environment files — only .env.example may be committed
+.env.bak
+.env.*.bak
+*.env.bak
+.env.old
+.env.save

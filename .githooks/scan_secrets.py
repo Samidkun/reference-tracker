@@ -31,6 +31,11 @@ PATTERNS = [
     (r"npm_[A-Za-z0-9]{36}", "npm token"),
     (r"sq0atp-[0-9A-Za-z_\-]{22}", "Square access token"),
     (r"(mysql|postgres|postgresql|mongodb|redis)://[^\s:@]+:[^\s:@]+@", "DB URL with password"),
+    # Laravel APP_KEY: a real one is base64: followed by 44 chars of key
+    # material. This was MISSED entirely - an .env backup carrying the live
+    # APP_KEY committed cleanly, and APP_KEY decrypts every session cookie and
+    # encrypted column, so leaking it is equivalent to leaking the database.
+    (r"base64:[A-Za-z0-9+/]{40,}={0,2}", "Laravel APP_KEY (base64)"),
 ]
 
 # generic assignment of a secret-ish name to a literal value.
@@ -40,7 +45,7 @@ PATTERNS = [
 # (Password::defaults(), Cache::get(), Foo::BAR) reads as "name = value" and
 # flags every framework file that mentions the word "password".
 GENERIC = re.compile(
-    r"(?i)(?<![A-Za-z0-9])(api[_-]?key|secret|passwd|password|token|private[_-]?key|access[_-]?key)"
+    r"(?i)(?<![A-Za-z0-9])(api[_-]?key|app[_-]?key|secret|passwd|password|token|private[_-]?key|access[_-]?key)"
     r"(?![A-Za-z0-9_])"
     r"\s*[:=]\s*(?!:)(?:['\"]([^'\"]{8,})['\"]|([^\s'\"#]{8,}))"
 )
