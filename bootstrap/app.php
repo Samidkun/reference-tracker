@@ -12,6 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Security headers belong on EVERY response, including error pages —
+        // so this is a global prepend, not a web-group append.
+        $middleware->prepend(\App\Http\Middleware\SecurityHeaders::class);
+
         $middleware->web(append: [
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
         ]);
