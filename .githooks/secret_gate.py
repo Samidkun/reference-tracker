@@ -52,24 +52,15 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-def _default_scanner() -> str:
-    """Prefer the scanner sitting next to this file (it is shipped into
-    .githooks/ beside the hook), then fall back to the skill location."""
-    sibling = os.path.join(HERE, "scan_secrets.py")
-    if os.path.isfile(sibling):
-        return sibling
-    return os.path.join(
-        os.path.expanduser("~"),
-        ".hermes",
-        "skills",
-        "software-development",
-        "project-bootstrap",
-        "scripts",
-        "scan_secrets.py",
-    )
-
-
-DEFAULT_SCANNER = _default_scanner()
+DEFAULT_SCANNER = os.path.join(
+    os.path.expanduser("~"),
+    ".hermes",
+    "skills",
+    "software-development",
+    "project-bootstrap",
+    "scripts",
+    "scan_secrets.py",
+)
 
 # Extensions that cannot contain a text secret and may be huge. The scanner
 # itself tolerates binary data, but skipping keeps history mode fast.
