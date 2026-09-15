@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Refuse to push a tag that does not point at HEAD.
+#
+# Why this hook exists: the "tag last, verify tag==HEAD" rule was written into
+# the SOP and then violated FOUR times in one session, because every commit made
+# after tagging silently moves HEAD away and nothing warns you. A rule that
+# depends on remembering is not a control. This is the mechanism.
+#
+# Reading stdin: pre-push receives "<local ref> <local sha> <remote ref> <remote sha>"
+# per line. Exit non-zero to abort the push.
+#
+# NOTE on dereferencing: `git rev-parse refs/tags/vX` returns the TAG OBJECT's
+# sha for an annotated tag, which never equals HEAD. Comparing that would block
+# every legitimate release. `^{commit}` peels to the commit the tag names. This
+# is the same class of mistake as scanning the working tree instead of the
+# staged blob: comparing the wrong object.
+set -uo pipefail
+fail=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    case "$local_ref" in
+        refs/tags/*)
+            tag="${local_ref#refs/tags/}"
+            head_sha="$(git rev-parse HEAD 2>/dev/null || echo '')"
+            tag_sha="$(git rev-parse "refs/tags/${tag}^{commit}" 2>/dev/null || echo '')"
+
+            if [ -z "$tag_sha" ]; then
+                printf '\nBLOCKED: cannot resolve tag %s to a commit.\n' "$tag" >&2
+                fail=1
+                continue
+            fi
+
+            if [ "$tag_sha" != "$head_sha" ]; then
+                behind="$(git rev-list --count "${tag_sha}..HEAD" 2>/dev/null || echo '?')"
+                printf '\nBLOCKED: tag %s does not point at HEAD.\n' "$tag" >&2
+                printf '  tag  -> %s\n' "${tag_sha:0:7}" >&2
+                printf '  HEAD -> %s  (%s commit(s) ahead)\n' "${head_sha:0:7}" "$behind" >&2
+                printf '\n  A release tag names a specific commit. Pushing this would publish\n' >&2
+                printf '  a different build than the one that was tested.\n\n' >&2
+                printf '  Fix:  git tag -d %s && git tag -a %s -m "<message>"\n\n' "$tag" "$tag" >&2
+                fail=1
+            fi
+            ;;
+    esac
+done
+
+exit $fail
