@@ -1,29 +1,29 @@
 # SOP Test Run — Reference Tracker
 
 **Tujuan:** uji pertama `web-app-sop` di project nyata (bukan simulasi).
-**Tier:** T1 (client-grade) · **Stack:** Laravel 13 + Inertia + React + Vite + MariaDB
+**Tier:** T1 · **Stack:** Laravel 13.31 + Inertia 3.3 + React 19 + Vite 8 + Tailwind 4 + MariaDB
 **Lokasi:** `/mnt/data/01_Projects/Porto/reference-tracker`
 
 ---
 
-## Progres per Stage
+## Progres
 
 | Stage | Status | Catatan |
 |---|---|---|
-| 0 — Prompt Roast | ✅ | Request "test sop buat project" di-roast: vague, tujuan meta. Dipaksa jadi konkret (project + tier + stack + fitur). |
-| 1 — Brainstorm | ✅ | Design disetujui. Scope naik dari usulan awal (login + import + DOI). |
-| 1.5 — Factory Bootstrap | ✅ | 14 file dibuat. **1 bug scanner ketemu & dibenerin.** |
-| 2 — Anti-Slop | ⬜ | |
-| 2.5 — UI + Feature Checklist | ⬜ | |
-| 3 — Spec | ⬜ | |
-| 4 — Plan | ⬜ | |
-| 5 — Workspace | ✅ | Sudah di main branch (T1, solo, tidak pakai worktree terpisah) |
-| 6 — TDD | ⬜ | |
-| 7 — Execute | ⬜ | |
+| 0 — Prompt Roast | ✅ | Request di-roast jadi konkret |
+| 1 — Brainstorm | ✅ | Design disetujui, tier naik T0→T1 |
+| 1.5 — Factory Bootstrap | ✅ | 14 file. **BUG #1 ketemu** |
+| 2 — Anti-Slop Contract | ✅ | `docs/design-contract.md` |
+| 2.5 — UI + Feature Checklist | ✅ | Ada di design contract |
+| 3 — Spec | ✅ | Design contract jadi spec (T1 kecil) |
+| 4 — Plan | ✅ | Plan in-flight, dikerjakan langsung |
+| 5 — Workspace | ✅ | main branch, solo |
+| 6 — TDD | 🔄 **3 cycle selesai** | 22 test, 59 assertions |
+| 7 — Execute | 🔄 | Models + logic selesai; UI belum |
 | 8 — Review | ⬜ | |
 | 9 — Debug | ⬜ | |
 | 10 — Prod Hardening | ⬜ | |
-| 11 — Docs + E2E | ⬜ | |
+| 11 — Docs + E2E | ⬜ | Playwright terpasang, belum ditulis |
 | 12 — UAT | ⬜ | |
 | 13 — Verify | ⬜ | |
 | 14 — Ship | ⬜ | |
@@ -31,53 +31,94 @@
 
 ---
 
-## 🔴 BUG NYATA #1 — scanner false-positive di `.htaccess`
+## 🔴 BUG NYATA #1 — scanner false-positive di `.htaccess` Laravel
 
-**Ditemukan:** Stage 1.5, waktu commit pertama.
-**Gejala:** commit normal **DIBLOKIR**. Semua project Laravel gak bisa commit.
-**Penyebab:** `public/.htaccess` baris 14:
-```apache
-RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
-```
-Dua cacat di `scan_secrets.py`:
-1. Guard `(?<![A-Za-z])` lolos di `XSRF_TOKEN` — underscore bukan huruf
-2. `%{...}` (sintaks Apache) tidak masuk daftar placeholder
+**Stage:** 1.5 · **Dampak:** SEMUA project Laravel gagal commit.
 
-**Perbaikan:**
-- Guard diperketat: `(?<![A-Za-z0-9])` ... `(?![A-Za-z0-9_])`
-- Tambah `SKIP_FILE` untuk config non-credential (`.htaccess`, `web.config`, `nginx.conf`, dll)
-- Placeholder tambah `%{...}` dan `{{...}}`
-- Skip `vendor/`, `node_modules/`, `.githooks/`
+`.htaccess` baris 14: `RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]`
 
-**Verifikasi:** battery test 15/15 pass (8 harus blokir, 6 harus lolos, 1 `.htaccess` nyata).
+Dua cacat `scan_secrets.py`:
+1. Guard `(?<![A-Za-z])` lolos di `XSRF_TOKEN` (underscore bukan huruf)
+2. `%{...}` sintaks Apache tidak dianggap placeholder
 
-**Pelajaran:** gate yang di-test di `/tmp` kosong **lolos**. Baru ketahuan salah waktu kena project nyata. Ini bukti kenapa test harus di project beneran.
+**Fix:** guard diperketat, `SKIP_FILE` untuk config non-credential, placeholder `%{}`/`{{}}`, skip `vendor/`+`node_modules/`.
+**Verifikasi:** 15/15 battery test.
+
+**Pelajaran:** scanner di-test di `/tmp` kosong → LOLOS. Baru ketahuan salah waktu kena project nyata. **Test harus di project beneran.**
+
+---
+
+## 🔴 BUG NYATA #2 — test infrastructure salah default
+
+**Stage:** 6 · **Dampak:** semua Feature test error.
+
+Laravel default `phpunit.xml` pakai SQLite `:memory:`, tapi **`pdo_sqlite` tidak terpasang** di mesin ini.
+
+**Fix:** arahkan test ke MariaDB `reference_tracker_test` (dibuat terpisah dari dev DB).
+
+**Pelajaran:** asumsi default framework bisa salah di environment nyata. Test infra harus diverifikasi sebelum nulis test.
+
+---
+
+## ⚠️ KOREKSI DIRI — assertion test salah, bukan kode
+
+**Stage:** 6, cycle 2.
+
+Test `test_parses_a_single_entry` assert `'article'` (tipe BibTeX mentah). Padahal spec-nya: parser menghasilkan **tipe internal** (`journal`), biar export bisa map balik `journal → article`.
+
+**Yang benar:** perbaiki **test**, bukan kode. Kode sudah sesuai spec.
+Ditambah `test_round_trips_through_export_and_import` sebagai jaring.
+
+**Pelajaran:** test yang gagal belum tentu kode salah. Cek spec dulu.
 
 ---
 
 ## Keputusan (Ruling)
 
-- **R1:** Tier dinaikkan T0 → T1 oleh user. Konsekuensi: docs + Playwright E2E + UAT jadi wajib.
-- **R2:** Database MariaDB (bukan SQLite) — `pdo_sqlite` tidak terpasang di mesin ini.
-- **R3:** Laravel 13.31 (bukan 11) — `composer create-project` mengambil versi terbaru.
-- **R4:** Solo + T1, kerja langsung di `main`. Tidak buat worktree terpisah (tidak ada kolaborator yang perlu dilindungi).
-- **R5:** Scanner di project di-sync dari skill (bukan symlink) supaya project self-contained.
+- **R1** Tier T0→T1 (user). Konsekuensi: docs + Playwright E2E + UAT wajib.
+- **R2** MariaDB, bukan SQLite — `pdo_sqlite` tidak ada.
+- **R3** Laravel 13.31 (bukan 11) — versi terbaru dari create-project.
+- **R4** Solo + T1 → kerja di `main`, tanpa worktree.
+- **R5** Scanner di-sync ke project (bukan symlink) — project self-contained.
+- **R6** `BibtexExporter`/`BibtexParser` = pure logic tanpa Eloquent → bisa di-test tanpa DB.
+- **R7** Parser toleran: entry rusak di-skip, bukan fatal (kehilangan 1 ref > tolak seluruh import).
+- **R8** Unescape saat import → export escape tepat sekali (bukan dobel).
 
 ---
 
-## Fitur yang Disetujui
+## TDD Progress
 
-1. Login (satu akun)
-2. CRUD referensi (judul, penulis, tahun, tipe, DOI, URL, catatan)
-3. Tag + filter by tag
-4. Cari by judul/penulis/tahun
-5. Export BibTeX (semua / pilihan)
-6. Import BibTeX (upload, parse, preview, konfirmasi)
-7. DOI auto-fetch via Crossref
+| Cycle | Deliverable | Test | Hasil |
+|---|---|---|---|
+| 1 | `BibtexExporter` | 6 | ✅ 19 assertions |
+| 2 | `BibtexParser` | 10 | ✅ + round-trip |
+| 3 | `Reference`/`Tag` models | 5 | ✅ |
+| — | **TOTAL** | **22** | **✅ 59 assertions** |
 
-## TDD Fokus (logic yang bisa salah)
+**Yang di-cover test:**
+- Export: type mapping, escaping `& % $ # _ { }`, author join, stable cite key, optional field omission
+- Import: brace-depth splitting, braced/quoted/bare values, `@string` skip, malformed tolerance, unescape
+- Model: JSON cast, search (title/author/year), pivot, cascade delete (user→refs, ref↛tags)
 
-- BibTeX **export**: mapping tipe, escaping (`& % $ # _ { }`), format penulis
-- BibTeX **import**: parser, entry rusak, dedupe
-- DOI fetch: parsing Crossref, handle not-found / API down
-- Search: kombinasi tag + teks + tahun
+---
+
+## Fitur
+
+1. Login (satu akun) — ⬜
+2. CRUD referensi — 🔄 model siap, controller+UI belum
+3. Tag + filter — 🔄 model siap
+4. Cari — ✅ scope siap + tested
+5. Export BibTeX — ✅ logic siap + tested
+6. Import BibTeX — ✅ logic siap + tested
+7. DOI fetch (Crossref) — ⬜
+
+---
+
+## Commit Log
+
+```
+b501565 feat(data): references + tags models, migrations, factories
+5bcb0a1 feat(bibtex): import/parse BibTeX files
+57ac410 feat(bibtex): export references to BibTeX
+0448dd2 chore: initial Laravel 13 + factory bootstrap (T1)
+```
