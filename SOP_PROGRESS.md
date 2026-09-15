@@ -1,8 +1,10 @@
 # SOP Test Run — Reference Tracker
 
 **Tujuan:** uji pertama `web-app-sop` di project nyata (bukan simulasi).
-**Tier:** T1 · **Stack:** Laravel 13.31 + Inertia 3.3 + React 19 + Vite 8 + Tailwind 4 + MariaDB
+**Tier:** T1 · **Stack:** Laravel 13.31 + Inertia 2.3 + React 19 + Vite 8 + Tailwind 4 + MariaDB
 **Lokasi:** `/mnt/data/01_Projects/Porto/reference-tracker`
+
+**Hasil akhir:** PHP **72 test / 206 assertions** ✅ · E2E **11 test** ✅
 
 ---
 
@@ -20,103 +22,119 @@
 | 5 — Workspace | ✅ | `main`, solo, tanpa worktree |
 | 6 — TDD | ✅ **5 cycle** | 72 test, 206 assertions |
 | 7 — Execute | ✅ | UI + logic + HTTP lengkap |
-| 8 — Review | 🔄 | |
-| 9 — Debug | ✅ | 5 bug ketemu & diperbaiki saat integrasi |
-| 10 — Prod Hardening | ⬜ | |
-| 11 — Docs + E2E | 🔄 | Playwright terpasang |
-| 12 — UAT | ⬜ | |
-| 13 — Verify | ⬜ | |
-| 14 — Ship | ⬜ | |
-| 16 — Retro | ⬜ | |
+| 8 — Review | ⚠️ | Dilakukan sendiri (bukan reviewer independen) — lihat retro Q2 |
+| 9 — Debug | ✅ | **10 bug** ketemu & diperbaiki |
+| 10 — Prod Hardening | ⬜ | Belum |
+| 11 — Docs + E2E | 🔶 | **E2E 11/11 ✅**; docs (End-User Guide + Runbook) belum |
+| 12 — UAT | ⬜ | Belum |
+| 13 — Verify | ✅ | Suite dijalankan ulang, output dibaca |
+| 14 — Ship | ⬜ | Belum (nunggu Stage 10/11 selesai) |
+| 16 — Retro | ✅ | `~/.hermes/retros/2026-09.md` |
 
 ---
 
-## 🔴 BUG NYATA (ketemu karena test di project beneran)
+## 🔴 10 BUG NYATA
+
+Semua ketemu karena dijalankan di project beneran. **Yang paling penting: 72 test backend hijau sementara UI-nya gak bisa nyimpen data sama sekali.**
 
 ### #1 — Secret scanner false-positive `.htaccess`
 **Stage 1.5 · Dampak: SEMUA project Laravel gagal commit.**
-`RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]`
-Guard `(?<![A-Za-z])` lolos karena `_` bukan huruf; `%{}` tak dianggap placeholder.
-**Fix:** guard diperketat + `SKIP_FILE` config non-credential + placeholder `%{}`/`{{}}` + skip `vendor/`, `node_modules/`.
+`RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]` — direktif Apache dibaca sebagai `TOKEN = value`. Guard `(?<![A-Za-z])` lolos karena `_` bukan huruf.
+**Fix:** guard diperketat, `SKIP_FILE` config non-credential, placeholder `%{}`/`{{}}`.
 
 ### #2 — Test infra salah default
 **Stage 6 · Dampak: semua Feature test error.**
-Laravel default pakai SQLite `:memory:`; **`pdo_sqlite` tidak terpasang**.
-**Fix:** arahkan ke MariaDB `reference_tracker_test` (DB terpisah dari dev).
+Laravel default SQLite `:memory:`; **`pdo_sqlite` tidak terpasang**.
+**Fix:** MariaDB `reference_tracker_test` (DB terpisah).
 
 ### #3 — `breeze:install` itu DESTRUKTIF
 **Stage 7 · Dampak: route hilang + downgrade Tailwind.**
-- `routes/web.php` di-overwrite → **semua route ReferenceController hilang**
-- Tailwind **4 → 3** (downgrade!)
-- `package.json` jadi **duplikat**: `react` v18+v19, `plugin-react` v4+v6
+- `routes/web.php` di-overwrite → **semua route fitur hilang**
+- Tailwind **4 → 3** (downgrade)
+- `package.json` **duplikat**: `react` v18+v19, `plugin-react` v4+v6
 - npm gagal (peer conflict) tapi installer bilang "successfully"
-**Fix:** restore `web.php`, pertahankan Tailwind 4 (CSS-first `@theme`), dedupe deps, `npm install` ulang → 0 vulnerabilities.
+**Fix:** restore routes, pertahankan Tailwind 4, dedupe, install ulang → 0 vulnerabilities.
 
-### #4 — Laravel 13 hapus `AuthorizesRequests` dari base Controller
-**Stage 7 · Dampak: `$this->authorize()` → "undefined method", semua show/update/delete 500.**
-**Fix:** tambahkan trait eksplisit.
+### #4 — Laravel 13 hapus `AuthorizesRequests`
+**Stage 7 · Dampak: `$this->authorize()` undefined → semua show/update/delete 500.**
+**Fix:** tambah trait eksplisit.
 
-### #5 — `BibtexExporter` abaikan `cite_key` tersimpan
+### #5 — `BibtexExporter` abaikan `cite_key`
 **Stage 7 · Dampak: round-trip `.bib` → semua entry GANTI NAMA diam-diam.**
 **Fix:** prioritas `override > cite_key tersimpan > derive`.
 
 ### #6 — `BibtexParser` berhenti di entry rusak
-**Stage 7 · Dampak: satu baris sampah (`@@@garbage@@@`) → entry valid SESUDAHNYA ikut terbuang.**
-Scanner menelan `{` milik entry berikutnya.
-**Fix:** validasi nama tipe antara `@` dan `{`; lewati hanya token buruk.
+**Stage 7 · Dampak: satu baris sampah → entry valid SESUDAHNYA ikut terbuang.**
+**Fix:** validasi nama tipe antara `@` dan `{`.
 
 ### #7 — Scanner false-positive framework code
-**Stage 7 · Dampak: commit diblokir 6× oleh `Password::defaults()`, `Hash::make()`, `$this->password = Password::MIN_LENGTH`.**
-**Fix:** guard `(?!:)` (jangan baca `::` sebagai assignment) + `is_code()` (RHS berisi `::`, `->`, `()`, `$`, `;` = ekspresi, bukan credential).
-**Regresi:** battery 34 kasus disimpan permanen di `project-bootstrap/scripts/test_scan_secrets.py`.
+**Stage 7 · Dampak: commit diblokir 6× oleh `Password::defaults()`, `Hash::make()`.**
+**Fix:** guard `(?!:)` + `is_code()` (RHS berisi `::`, `->`, `()`, `$`, `;` = ekspresi).
+**Regresi:** battery **34 kasus** permanen di `project-bootstrap/scripts/test_scan_secrets.py`.
+
+### #8 — Dua config Playwright, yang salah menang
+**Stage 11 · Dampak: E2E jalanin config Breeze (`npm run dev` :3000), timeout total.**
+**Fix:** hapus `playwright.config.ts`.
+
+### #9 — **Mismatch versi mayor Inertia** (paling berbahaya)
+**Stage 11 · Dampak: SEMUA halaman jadi shell kosong, TANPA error yang jelas.**
+`@inertiajs/react` **3.7.1** vs `inertiajs/inertia-laravel` **2.0.27**. Server kirim format v2, client v3 gak bisa baca → `Cannot read properties of null (reading 'component')` → React gak pernah mount.
+**Fix:** pin ke `^2.3.28` (`dist-tags.legacy`, bukan `latest`).
+
+### #10 — **UI gak bisa nyimpen referensi sama sekali**
+**Stage 11 · Dampak: form selalu ditolak server.**
+`useForm.submit()` **mengabaikan** opsi `data` yang di-pass ke `post()` — selalu kirim `transform.current(dataRef.current)` (diverifikasi di source library). Jadi `authors` terkirim sebagai string, server minta array: *"The authors field must be an array."*
+**Fix:** pakai `transform()`.
+**Ini bug yang HTTP test gak bisa lihat** — curl test gw kirim `authors[]=` langsung, jadi hijau.
+
+### Bonus — `public/hot` nyangkut
+Marker dev server Breeze bikin Laravel arahin asset ke Vite yang gak jalan → shell kosong. Sekarang dihapus otomatis di `globalSetup`.
 
 ---
 
 ## ⚠️ KOREKSI DIRI
 
-**Assertion test salah, bukan kode** (cycle 2 & 4):
-- Cycle 2: test assert `'article'` (tipe BibTeX), padahal spec = tipe internal (`journal`). **Test diperbaiki.**
-- Cycle 4: fixture pakai DOI `10.1/x` yang ditolak pre-filter format (registrant harus 4-9 digit). **Test diperbaiki**, kode sudah benar.
-- Cycle 4: `Http::fake()` di dalam loop **tidak** re-register — stub pertama menang selamanya. **Diverifikasi terhadap framework**, fix pakai satu callback fake.
+**Assertion test salah, bukan kode** (cycle 2, 4, dan E2E):
+- Cycle 2: assert `'article'` (tipe BibTeX), spec = tipe internal (`journal`).
+- Cycle 4: fixture DOI `10.1/x` ditolak pre-filter format (registrant 4-9 digit) — kode sudah benar.
+- Cycle 4: `Http::fake()` di loop **tidak** re-register; stub pertama menang. Diverifikasi ke framework.
+- E2E: `menuitem` untuk Log Out (Breeze pakai `<button>`); `et al.` untuk 2 author (formatnya `A & B`).
 
 ---
 
 ## Keputusan (Ruling)
 
-- **R1** Tier T0→T1 (user). Konsekuensi: docs + Playwright E2E + UAT wajib.
+- **R1** Tier T0→T1 (user). Konsekuensi: docs + E2E + UAT wajib.
 - **R2** MariaDB, bukan SQLite — `pdo_sqlite` tidak ada.
 - **R3** Laravel 13.31 (bukan 11).
 - **R4** Solo + T1 → kerja di `main`, tanpa worktree.
-- **R5** Scanner di-copy ke project, bukan symlink — project self-contained.
-- **R6** `BibtexExporter`/`BibtexParser`/`DoiResolver` = logic murni, bisa di-test tanpa DB.
+- **R5** Scanner di-copy ke project, bukan symlink.
+- **R6** `BibtexExporter`/`Parser`/`DoiResolver` = logic murni, testable tanpa DB.
 - **R7** Parser toleran: entry rusak dilewati, bukan fatal.
 - **R8** Unescape saat import → export escape tepat sekali.
-- **R9** Ownership **hanya** di `ReferencePolicy`, bukan di controller.
-- **R10** `user_id` **tidak pernah** diterima dari client.
-- **R11** Test pakai `withoutVite()` — test tidak boleh bergantung pada `npm run build`.
-- **R12** `resources/js/bootstrap.js` sengaja kosong — app pakai `fetch`, bukan axios (hemat ~50 kB).
+- **R9** Ownership **hanya** di `ReferencePolicy`.
+- **R10** `user_id` **tidak pernah** dari client.
+- **R11** Test pakai `withoutVite()` — gak boleh bergantung `npm run build`.
+- **R12** `bootstrap.js` sengaja kosong — pakai `fetch`, bukan axios.
+- **R13** E2E pakai DB sendiri (`reference_tracker_e2e`), `migrate:fresh` tiap run.
+- **R14** Pin `@inertiajs/react` ke `^2.3.28` — **wajib** cocok major dengan adapter Laravel.
+- **R15** Selector E2E by role + accessible name, bukan atribut presentasional.
 
 ---
 
 ## TDD Progress
 
-| Cycle | Deliverable | Test | Hasil |
-|---|---|---|---|
-| 1 | `BibtexExporter` | 6 | ✅ |
-| 2 | `BibtexParser` | 10 | ✅ round-trip |
-| 3 | `Reference`/`Tag` model | 5 | ✅ |
-| 4 | `DoiResolver` | 8 | ✅ |
-| 5 | HTTP layer + isolasi user | 17 | ✅ |
-| + | Breeze auth/profile (bawaan) | 24 | ✅ |
-| + | Import security (evil .bib) | 2 | ✅ |
-| — | **TOTAL** | **72** | **✅ 206 assertions** |
-
-**Coverage inti:**
-- Export: type mapping, escaping `& % $ # _ { }`, author join, cite key stabil, field opsional
-- Import: brace-depth splitting, braced/quoted/bare value, `@string` skip, toleransi entry rusak, unescape
-- Model: JSON cast, search (title/author/year/doi), pivot, cascade (user→refs hapus, ref↛tags tetap)
-- DOI: resolve, 404, 5xx, timeout, payload rusak, format invalid (tanpa network), 7→5 type map, fallback tahun
-- HTTP: auth gate, index+search+tag, CRUD, **isolasi antar-user (view/update/delete = 403)**, `user_id` client diabaikan, tag asing difilter, upload `.bib` divalidasi isi, DOI 404
+| Cycle | Deliverable | Test |
+|---|---|---|
+| 1 | `BibtexExporter` | 6 |
+| 2 | `BibtexParser` | 10 |
+| 3 | `Reference`/`Tag` model | 5 |
+| 4 | `DoiResolver` | 8 |
+| 5 | HTTP layer + isolasi user | 17 |
+| + | Breeze auth/profile (bawaan) | 24 |
+| + | Import security (evil .bib) | 2 |
+| **PHP TOTAL** | | **72** (206 assertions) |
+| E2E | auth, CRUD, bibtex, isolation | **11** |
 
 ---
 
@@ -134,21 +152,18 @@ Scanner menelan `{` milik entry berikutnya.
 
 ---
 
-## Verifikasi HTTP Nyata (bukan cuma unit test)
+## Verifikasi (bukti, bukan klaim)
 
 ```
-GET  /                    -> 302 -> /references
-GET  /references (guest)  -> 302 -> /login
-GET  /login               -> 200, Inertia component Auth/Login
-POST /register            -> 302 -> /dashboard
-GET  /references (auth)   -> 200, component References/Index
-POST /references          -> 302, tersimpan
-GET  /references?q=...    -> filter benar (1 match / 0 match)
-GET  /references/export   -> 200, application/x-bibtex, isi valid
-POST /references/import   -> 302, 2 entry dari .bib kotor
-POST evil.bib (PHP)       -> DITOLAK, 0 row, error "does not look like BibTeX"
-POST /references/doi      -> 200, metadata asli dari Crossref
-npm run build             -> sukses, Tailwind 44K CSS, 0 vulnerabilities
+PHP    : OK (72 tests, 206 assertions)
+E2E    : 11 passed (11.4s)
+Build  : sukses, Tailwind CSS 44K, 0 vulnerabilities
+Scanner: 34 passed, 0 failed (MUST_BLOCK + MUST_PASS)
+HTTP   : / -> 302; /references (guest) -> 302 /login
+         POST /references -> tersimpan; ?q= -> filter benar
+         export -> application/x-bibtex; import .bib kotor -> 2 entry
+         evil.bib (PHP) -> DITOLAK, 0 row
+         DOI lookup -> metadata asli dari Crossref
 ```
 
 ---
@@ -156,6 +171,7 @@ npm run build             -> sukses, Tailwind 44K CSS, 0 vulnerabilities
 ## Commit Log
 
 ```
+2b2b204 test(e2e): Playwright suite (11 tests) + fix 3 real bugs it exposed
 6f6702a feat(ui): references CRUD, BibTeX import/export, DOI lookup
 ce63a51 feat(doi): resolve DOIs via Crossref with graceful degradation
 b501565 feat(data): references + tags models, migrations, factories
@@ -163,3 +179,21 @@ b501565 feat(data): references + tags models, migrations, factories
 57ac410 feat(bibtex): export references to BibTeX
 0448dd2 chore: initial Laravel 13 + factory bootstrap (T1)
 ```
+
+---
+
+## Sisa Kerjaan (jujur)
+
+1. **Stage 10 — Prod hardening** belum: N+1 check, index review, perf budget, security headers verify.
+2. **Stage 11 — Docs** belum: End-User Guide + Runbook. E2E-nya sudah ✅.
+3. **Stage 12 — UAT** belum.
+4. **Stage 14 — Ship** belum.
+5. **Stage 8 — Review** dilakukan sendiri; bukan reviewer independen. Ini kelemahan nyata yang gw catat di retro.
+
+## Yang berubah di SOP sendiri (hasil run ini)
+
+- **Stage 1.5 "Scaffolder Safety"** — backup, diff, cek versi dependency, bersihin marker & config bayangan.
+- **Stage 11 "Shift-left rule"** — 1 smoke test begitu ada halaman; selector by role; test harus bisa dibuktiin bisa gagal.
+- **`references/integration-hazards.md`** — 10 entri symptom → cause → fix.
+- **`scan_secrets.py`** diperkeras + battery regresi 34 kasus (MUST_BLOCK **dan** MUST_PASS).
+- **4 rationalization baru** — "backend test hijau berarti jalan", "installer bilang sukses", "E2E nanti aja", "test hang berarti app lambat".
