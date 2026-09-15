@@ -259,6 +259,8 @@ migrasi terakhir ikut dirilis.
 | E2E: `waiting for locator` | Selektor salah, bukan app lambat | Cek `test-results/*/error-context.md` |
 | Commit ditolak "possible secret" | False positive scanner | Baca `.githooks/scan_secrets.py`; jalankan battery-nya |
 | Asset 404 setelah deploy | Manifest Vite tidak ada | `npm run build` di server |
+| Halaman produksi **kosong** padahal lokal normal | CSP memblokir script inline (Ziggy / Vite prefetch) | Pastikan nonce ada di `script-src` dan `@routes(null, $cspNonce)` |
+| Console: *"invalid source: ws://[::1]:5173"* | Literal IPv6 dalam tanda kurung tidak valid di CSP | Pakai `ws://localhost:5173` |
 
 ### Verifikasi cepat bahwa app sehat
 
@@ -282,9 +284,32 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/references  # 302
 | Upload file | `ImportBibtexRequest` memeriksa **isi** file, bukan cuma ekstensi |
 | SQL injection | Query builder + binding; `LOWER()` di sisi SQL, nilai selalu di-bind |
 | Secret | Pre-commit hook + scanner bawaan, **fail-closed** |
-| Header | `SecurityHeaders` (global, termasuk halaman error) + CSP |
+| Header | `SecurityHeaders` (global, termasuk halaman error) + CSP nonce |
 | CSRF | Middleware Laravel standar; `fetch()` membaca `<meta name="csrf-token">` |
 | DOI | Timeout 8 detik, tidak pernah throw, semua kegagalan → `null` |
+
+### CSP — kenapa ada `'unsafe-inline'` di style tapi tidak di script
+
+Halaman ini memuat **dua script inline**: tabel route Ziggy (~23 kB, dari
+`@routes`) dan helper prefetch Vite (~7 kB, dari `@vite`). Kalau CSP memblokir
+keduanya, `route()` jadi undefined dan **seluruh aplikasi mati** — tapi cuma di
+production, karena policy lokal mengizinkan `'unsafe-inline'` untuk Vite.
+
+Solusinya **nonce per-request**, bukan `'unsafe-inline'`:
+- `SecurityHeaders` membuat nonce acak per request.
+- Nonce diteruskan ke `@routes(null, $cspNonce)` dan ke Vite lewat
+  `Vite::useCspNonce($nonce)` — API resmi Laravel.
+- `script-src` jadi `'self' 'nonce-...' 'strict-dynamic'`.
+
+`style-src` **tetap** butuh `'unsafe-inline'`, karena progress bar Inertia
+(nprogress) menyuntik blok `<style>` saat runtime dan tidak menyediakan hook
+nonce. Ini konsesi yang disengaja dan terbatas: **CSS inline tidak bisa
+menjalankan kode**, sementara script tetap terkunci ke nonce. Perbedaan ini
+diuji eksplisit di `CspInlineScriptTest`.
+
+**Bukti verifikasi:** dijalankan di browser nyata dengan `APP_ENV=production` —
+0 CSP violation, 0 console error, Ziggy ter-load. Saat fix dilepas, 2 violation
+muncul kembali.
 
 **Bukan cakupan saat ini:** 2FA, rate limiting login, verifikasi email wajib,
 audit log, enkripsi at-rest. Tambahkan kalau tier naik ke T2.

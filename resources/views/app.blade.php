@@ -12,7 +12,10 @@
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
 
-        @routes
+        {{-- The nonce lets these inline scripts run under a strict CSP.
+             @routes = Ziggy route table (~23 kB inline).
+             @vite  = module tag + Laravel's inline prefetch script. --}}
+        @routes(null, $cspNonce ?? null)
         @viteReactRefresh
         {{-- Single entry: app.jsx resolves every page with import.meta.glob,
              so adding a page never requires touching this template. --}}

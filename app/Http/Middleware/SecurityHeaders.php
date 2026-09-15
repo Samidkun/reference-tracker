@@ -6,6 +6,8 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\View;
+use Illuminate\Support\Facades\Vite;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -26,6 +28,20 @@ class SecurityHeaders
 {
     public function handle(Request $request, Closure $next): Response
     {
+        // A fresh nonce per request. Ziggy's @routes emits a ~23 kB INLINE
+        // script; without a nonce (or 'unsafe-inline') a browser blocks it in
+        // production and the whole app dies, because `route()` never exists.
+        // A nonce keeps the strict policy AND allows that one script.
+        $nonce = rtrim(strtr(base64_encode(random_bytes(16)), '+/', '-_'), '=');
+        app()->instance('csp-nonce', $nonce);
+        View::share('cspNonce', $nonce);
+
+        // Laravel's own @vite pipeline emits an INLINE prefetch script
+        // (Illuminate\Foundation\Vite::prefetch) as well as the module tag.
+        // Without a nonce those are blocked in production. This is the
+        // framework's supported hook for exactly that.
+        Vite::useCspNonce($nonce);
+
         $response = $next($request);
 
         $headers = [
@@ -66,15 +82,24 @@ class SecurityHeaders
         // browser uses only the last one, which silently drops the first.
         $connect = ["'self'", 'https://api.crossref.org'];
         if (app()->environment('local', 'testing')) {
+            // NOTE: no bracketed IPv6 literal (ws://[::1]:5173). A browser
+            // rejects it as an invalid CSP source and logs a violation on
+            // every page load. `localhost` covers the dev server.
             $connect[] = 'ws://localhost:5173';
-            $connect[] = 'ws://[::1]:5173';
         }
 
+        // style-src needs 'unsafe-inline' in every environment: Inertia's
+        // progress bar (nprogress) injects a <style> block at runtime and
+        // offers no nonce hook. This is a deliberate, bounded concession —
+        // inline STYLE is far lower risk than inline SCRIPT (no code
+        // execution), and scripts stay locked to the nonce. Verified in a
+        // real browser: without it the console reports a CSP violation on
+        // every page load.
         $directives = [
             "default-src 'self'",
             "img-src 'self' data:",
             "font-src 'self' data: https://fonts.bunny.net",
-            "style-src 'self' https://fonts.bunny.net",
+            "style-src 'self' 'unsafe-inline' https://fonts.bunny.net",
             'connect-src ' . implode(' ', $connect),
             "form-action 'self'",
             "frame-ancestors 'none'",
@@ -82,12 +107,16 @@ class SecurityHeaders
             "object-src 'none'",
         ];
 
+        $nonce = app()->bound('csp-nonce') ? app('csp-nonce') : '';
+
         if (app()->environment('local', 'testing')) {
-            // Vite dev server: HMR needs websockets, and the dev client is
-            // injected inline.
-            $directives[] = "script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:5173 http://[::1]:5173";
+            // Vite dev server: HMR needs websockets and injects inline script.
+            $directives[] = "script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:5173";
         } else {
-            $directives[] = "script-src 'self'";
+            // 'strict-dynamic' lets the nonce-carrying script load the Vite
+            // bundle; without it the hashed bundle URL is not implicitly
+            // trusted in some browsers.
+            $directives[] = "script-src 'self' 'nonce-{$nonce}' 'strict-dynamic'";
             $directives[] = "upgrade-insecure-requests";
         }
 
