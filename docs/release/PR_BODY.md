@@ -4,7 +4,7 @@ Personal literature/reference tracker. Tier **T1** (client-grade) — full
 pipeline: TDD, docs, E2E, hardening.
 
 **Stack:** Laravel 13.31 · Inertia 2.3 · React 19 · Vite 8 · Tailwind 4 · MariaDB
-**Verification:** 133 PHP tests / 369 assertions · 14 Playwright E2E · scanner battery 39/39
+**Verification:** 155 PHP tests / 508 assertions · 22 Playwright E2E · scanner battery 39/39
 
 ---
 
@@ -31,6 +31,10 @@ pipeline: TDD, docs, E2E, hardening.
 | SQL injection | query builder with bound parameters; `LOWER()` applied in SQL, never string-interpolated |
 | XSS | React escapes by default; no `dangerouslySetInnerHTML` on user content |
 | CSP | per-request nonce; `script-src 'self' 'nonce-…' 'strict-dynamic'` |
+| Existence oracle | owner-scoped route binding: a foreign row is 404, indistinguishable from a missing one |
+| LIKE injection | `%` and `_` escaped, with an explicit `ESCAPE` clause |
+| Rate limits | import 10/min, DOI lookup 30/min; import capped at 2000 entries |
+| Proxy awareness | trusted proxies configured so HSTS and the Secure cookie flag actually fire behind a TLS terminator |
 | Headers | `nosniff`, `DENY` framing, referrer policy, permissions policy, HSTS over TLS |
 | Secrets | fail-closed pre-commit scan; history swept clean |
 
@@ -38,8 +42,9 @@ pipeline: TDD, docs, E2E, hardening.
 
 ## What testing actually caught
 
-22 real defects, 6 of them in the SOP's own tooling. The three that mattered most
-were invisible to a fully green backend suite:
+24 real defects, 6 of them in the SOP's own tooling, plus 30 findings from two
+independent adversarial reviews (backend + frontend). The three that mattered
+most were invisible to a fully green backend suite:
 
 1. **Inertia client 3.7 vs server 2.0** — every page rendered as an empty shell.
 2. **`useForm.submit()` ignores a `data` option** — the UI could not save a single
@@ -53,7 +58,9 @@ validation looser than the schema, an unvalidated import path (100 kB authors st
 verbatim), a partial update that wiped tags, and a malformed query string that
 returned a 500 with 932 kB of stack trace.
 
-**Independent review found 4 defects the author had already reviewed past** — see
+**The independent reviews found 30 more**, including a tag filter that made
+saved references appear to vanish, LIKE wildcard injection, an existence oracle,
+HSTS never firing behind a proxy, and an unbounded import. See
 `docs/release/REVIEW_NOTES.md`.
 
 ---
@@ -79,8 +86,8 @@ returned a 500 with 932 kB of stack trace.
 - [ ] `cp .env.example .env && php artisan key:generate`
 - [ ] `php artisan migrate`
 - [ ] `npm run build`
-- [ ] `./vendor/bin/phpunit` → 133 passing
-- [ ] `npm run test:e2e` → 14 passing
+- [ ] `./vendor/bin/phpunit` → 155 passing
+- [ ] `npm run test:e2e` → 22 passing
 - [ ] `python3 .githooks/../scan_secrets.py --help` → scanner present
 - [ ] `git ls-files | grep -E '^\.env'` → only `.env.example`
 - [ ] `APP_ENV=production APP_DEBUG=false php artisan serve` → open in a browser,
