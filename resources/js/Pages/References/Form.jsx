@@ -239,13 +239,10 @@ export default function Form({ reference, tags }) {
                             <InputLabel htmlFor="title" value="Title" />
                             <TextInput
                                 id="title"
-                                className={
-                                    'mt-1 block w-full ' +
-                                    (errors.title ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : '')
-                                }
+                                className="mt-1 block w-full"
+                                invalid={Boolean(errors.title)}
                                 value={data.title}
                                 onChange={(e) => setData('title', e.target.value)}
-                                aria-invalid={errors.title ? 'true' : undefined}
                                 aria-describedby={errors.title ? 'title-error' : undefined}
                                 required
                             />
@@ -259,10 +256,17 @@ export default function Form({ reference, tags }) {
                                 rows={3}
                                 value={data.authors}
                                 onChange={(e) => setData('authors', e.target.value)}
-                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500"
+                                aria-invalid={errors.authors ? 'true' : undefined}
+                                aria-describedby={errors.authors ? 'authors-error' : undefined}
+                                className={
+                                    'mt-1 block w-full rounded-md shadow-sm focus:ring-2 ' +
+                                    (errors.authors
+                                        ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+                                        : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500')
+                                }
                                 placeholder="Surname, Given&#10;Surname, Given"
                             />
-                            <InputError className="mt-1" message={errors.authors} />
+                            <InputError id="authors-error" className="mt-1" message={errors.authors} />
                         </div>
 
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -272,10 +276,12 @@ export default function Form({ reference, tags }) {
                                     id="year"
                                     type="number"
                                     className="mt-1 block w-full"
+                                    invalid={Boolean(errors.year)}
                                     value={data.year}
                                     onChange={(e) => setData('year', e.target.value)}
+                                    aria-describedby={errors.year ? 'year-error' : undefined}
                                 />
-                                <InputError className="mt-1" message={errors.year} />
+                                <InputError id="year-error" className="mt-1" message={errors.year} />
                             </div>
 
                             <div>
@@ -284,7 +290,14 @@ export default function Form({ reference, tags }) {
                                     id="type"
                                     value={data.type}
                                     onChange={(e) => setData('type', e.target.value)}
-                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500"
+                                    aria-invalid={errors.type ? 'true' : undefined}
+                                    aria-describedby={errors.type ? 'type-error' : undefined}
+                                    className={
+                                        'mt-1 block w-full rounded-md shadow-sm focus:ring-2 ' +
+                                        (errors.type
+                                            ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+                                            : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500')
+                                    }
                                 >
                                     {TYPES.map(([value, label]) => (
                                         <option key={value} value={value}>
@@ -292,7 +305,7 @@ export default function Form({ reference, tags }) {
                                         </option>
                                     ))}
                                 </select>
-                                <InputError className="mt-1" message={errors.type} />
+                                <InputError id="type-error" className="mt-1" message={errors.type} />
                             </div>
                         </div>
 
@@ -302,8 +315,10 @@ export default function Form({ reference, tags }) {
                                 <TextInput
                                     id="doi"
                                     className="block w-full"
+                                    invalid={Boolean(errors.doi)}
                                     value={data.doi}
                                     onChange={(e) => setData('doi', e.target.value)}
+                                    aria-describedby={errors.doi ? 'doi-error' : undefined}
                                     placeholder="10.48550/arXiv.1706.03762"
                                 />
                                 <button
@@ -318,7 +333,7 @@ export default function Form({ reference, tags }) {
                             {doiError && (
                                 <p className="mt-1 text-sm text-amber-700">{doiError}</p>
                             )}
-                            <InputError className="mt-1" message={errors.doi} />
+                            <InputError id="doi-error" className="mt-1" message={errors.doi} />
                         </div>
 
                         <div>
@@ -327,10 +342,12 @@ export default function Form({ reference, tags }) {
                                 id="url"
                                 type="url"
                                 className="mt-1 block w-full"
+                                invalid={Boolean(errors.url)}
                                 value={data.url}
                                 onChange={(e) => setData('url', e.target.value)}
+                                aria-describedby={errors.url ? 'url-error' : undefined}
                             />
-                            <InputError className="mt-1" message={errors.url} />
+                            <InputError id="url-error" className="mt-1" message={errors.url} />
                         </div>
 
                         <div>
@@ -340,9 +357,16 @@ export default function Form({ reference, tags }) {
                                 rows={3}
                                 value={data.notes}
                                 onChange={(e) => setData('notes', e.target.value)}
-                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500"
+                                aria-invalid={errors.notes ? 'true' : undefined}
+                                aria-describedby={errors.notes ? 'notes-error' : undefined}
+                                className={
+                                    'mt-1 block w-full rounded-md shadow-sm focus:ring-2 ' +
+                                    (errors.notes
+                                        ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+                                        : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500')
+                                }
                             />
-                            <InputError className="mt-1" message={errors.notes} />
+                            <InputError id="notes-error" className="mt-1" message={errors.notes} />
                         </div>
 
                         {tags.length > 0 && (
@@ -357,14 +381,15 @@ export default function Form({ reference, tags }) {
                                                 className={
                                                     'cursor-pointer rounded-full border px-3 py-1 text-xs ' +
                                                     (checked
-                                                        ? 'border-gray-900 bg-gray-900 text-white'
-                                                        : 'border-gray-300 bg-white text-gray-700')
+                                                        ? 'border-indigo-600 bg-indigo-600 text-white'
+                                                        : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50')
                                                 }
                                             >
                                                 <input
                                                     type="checkbox"
                                                     className="sr-only"
                                                     checked={checked}
+                                                    aria-label={t.name}
                                                     onChange={() =>
                                                         setData(
                                                             'tags',
@@ -397,7 +422,7 @@ export default function Form({ reference, tags }) {
                             </PrimaryButton>
                             <Link
                                 href="/references"
-                                className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-widest text-gray-700 transition hover:bg-gray-50"
+                                className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
                             >
                                 Cancel
                             </Link>

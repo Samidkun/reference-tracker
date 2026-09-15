@@ -47,7 +47,10 @@ return [
     |
     */
 
-    'encrypt' => env('SESSION_ENCRYPT', false),
+    // Encrypt the session payload with APP_KEY. There is no real cost and it
+    // means a captured cookie is not readable without the key. Defaulted ON;
+    // it was previously false, which the review flagged.
+    'encrypt' => env('SESSION_ENCRYPT', true),
 
     /*
     |--------------------------------------------------------------------------
@@ -169,7 +172,10 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    // Send the cookie over HTTPS only. Defaults to ON in production and OFF
+    // elsewhere, because a Secure cookie is never sent over http://localhost
+    // and would break local login. Override with SESSION_SECURE_COOKIE.
+    'secure' => env('SESSION_SECURE_COOKIE', env('APP_ENV', 'production') === 'production'),
 
     /*
     |--------------------------------------------------------------------------

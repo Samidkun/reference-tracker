@@ -58,7 +58,7 @@ test.describe('UI quality', () => {
         await page.getByRole('button', { name: /clear filters/i }).click();
         await page.waitForURL((u) => !u.search.includes('q='));
 
-        await expect(page.getByText('Alpha Paper')).toBeVisible();
+        await expect(page.getByRole('table').getByText('Alpha Paper')).toBeVisible();
     });
 
     test('a long unbroken title does not blow the layout sideways', async ({ page }) => {
@@ -149,5 +149,61 @@ test.describe('UI quality', () => {
         await expect(nav).toBeVisible();
         // the « character must be present as text
         await expect(nav.getByText('«')).toBeVisible();
+    });
+
+    test('the list becomes stacked cards on mobile, and the table on desktop', async ({ page }) => {
+        // Contract: "Mobile: tabel jadi kartu bertumpuk". Both layouts exist in
+        // the DOM (so neither can be lost to a CSS regression), but only one
+        // may be visible at a given width.
+        await page.goto('/references/create');
+        await fillReference(page, { title: 'Responsive Row', authors: 'Doe, J', year: 2020, type: 'journal' });
+        await page.getByRole('button', { name: 'Add reference' }).click();
+        await page.waitForURL('**/references');
+
+        await page.setViewportSize({ width: 1280, height: 800 });
+        await expect(page.getByRole('table')).toBeVisible();
+        await expect(page.locator('ul.sm\\:hidden').first()).toBeHidden();
+
+        await page.setViewportSize({ width: 390, height: 844 });
+        await expect(page.getByRole('table')).toBeHidden();
+        const card = page.locator('ul.sm\\:hidden li').first();
+        await expect(card).toBeVisible();
+        await expect(card.getByText('Responsive Row')).toBeVisible();
+    });
+
+    test('the primary action uses the single accent colour from the contract', async ({ page }) => {
+        await page.goto('/references');
+
+        // Contract: indigo-600 (#4f46e5) is the ONE accent, for primary
+        // actions. The review found the accent was entirely absent.
+        const add = page.getByRole('link', { name: 'Add reference' }).first();
+        const bg = await add.evaluate((el) => getComputedStyle(el).backgroundColor);
+
+        // Tailwind 4 emits oklch for indigo-600; older pipelines emit rgb.
+        // Accept either form of the SAME colour - what matters is that the
+        // accent is present at all, which the review found it was not.
+        const ACCENT = ['oklch(0.511 0.262 276.966)', 'rgb(79, 70, 229)'];
+        expect(ACCENT, `Add reference must use the accent, got ${bg}`).toContain(bg);
+    });
+
+    test('an invalid field is marked up and painted red, not just annotated', async ({ page }) => {
+        await page.goto('/references/create');
+
+        // An over-long title trips the server's max:500 rule. (An empty one
+        // would be stopped by the browser's own `required` check, so the
+        // server-side error path - the one that renders the message - would
+        // never run and this test would prove nothing.)
+        await fillReference(page, { title: 'x'.repeat(501), authors: 'Doe, J', year: 2020, type: 'journal' });
+        await page.getByRole('button', { name: 'Add reference' }).click();
+
+        const title = page.locator('#title');
+        await expect(title).toHaveAttribute('aria-invalid', 'true');
+        await expect(title).toHaveAttribute('aria-describedby', 'title-error');
+
+        const border = await title.evaluate((el) => getComputedStyle(el).borderColor);
+
+        // Tailwind 4 emits oklch for red-500; older pipelines emit rgb.
+        const RED = ['oklch(0.637 0.237 25.331)', 'rgb(239, 68, 68)'];
+        expect(RED, `invalid field border must be red, got ${border}`).toContain(border);
     });
 });

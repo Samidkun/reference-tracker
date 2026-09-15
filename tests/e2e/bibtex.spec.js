@@ -33,8 +33,11 @@ test.describe('bibtex round trip', () => {
         await page.getByRole('button', { name: 'Import' }).click();
         await page.waitForURL('**/references');
 
-        await expect(page.getByText('Deep Learning')).toBeVisible();
-        await expect(page.getByText('Simulating Physics with Computers')).toBeVisible();
+        // The desktop table and the mobile card list both render the title, so
+        // scope to the layout under test (E2E runs a desktop viewport).
+        const list = page.getByRole('table');
+        await expect(list.getByText('Deep Learning')).toBeVisible();
+        await expect(list.getByText('Simulating Physics with Computers')).toBeVisible();
 
         // EXPORT and inspect the actual downloaded bytes
         const [download] = await Promise.all([

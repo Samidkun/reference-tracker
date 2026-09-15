@@ -20,9 +20,10 @@ test.describe('reference library', () => {
         await page.getByRole('button', { name: 'Add reference' }).click();
         await page.waitForURL('**/references');
 
-        await expect(page.getByText('Attention Is All You Need')).toBeVisible();
+        const list = page.getByRole('table');
+        await expect(list.getByText('Attention Is All You Need')).toBeVisible();
         // two authors render as 'A & B'; 'et al.' is reserved for 3+
-        await expect(page.getByText('Vaswani, Ashish & Shazeer, Noam')).toBeVisible();
+        await expect(list.getByText('Vaswani, Ashish & Shazeer, Noam')).toBeVisible();
 
         // VIEW
         await page.getByRole('link', { name: 'Attention Is All You Need' }).click();
@@ -36,7 +37,7 @@ test.describe('reference library', () => {
         await page.getByRole('button', { name: 'Save changes' }).click();
         await page.waitForURL('**/references');
 
-        await expect(page.getByText('Attention Is All You Need (revised)')).toBeVisible();
+        await expect(list.getByText('Attention Is All You Need (revised)')).toBeVisible();
 
         // DELETE — an in-page dialog now, not window.confirm
         await page.getByRole('button', { name: 'Delete' }).first().click();
@@ -74,14 +75,15 @@ test.describe('reference library', () => {
             await page.waitForURL('**/references');
         }
 
-        await expect(page.getByText('Deep Learning')).toBeVisible();
-        await expect(page.getByText('Quantum Computing')).toBeVisible();
+        const list = page.getByRole('table');
+        await expect(list.getByText('Deep Learning')).toBeVisible();
+        await expect(list.getByText('Quantum Computing')).toBeVisible();
 
         await page.fill('input[type="search"]', 'quantum');
         await page.getByRole('button', { name: 'Search' }).click();
         await page.waitForURL(/q=quantum/);
 
-        await expect(page.getByText('Quantum Computing')).toBeVisible();
-        await expect(page.getByText('Deep Learning')).toHaveCount(0);
+        await expect(list.getByText('Quantum Computing')).toBeVisible();
+        await expect(list.getByText('Deep Learning')).toHaveCount(0);
     });
 });

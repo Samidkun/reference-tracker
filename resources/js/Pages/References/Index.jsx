@@ -104,7 +104,7 @@ export default function Index() {
                         </a>
                         <Link
                             href="/references/create"
-                            className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800"
+                            className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
                         >
                             Add reference
                         </Link>
@@ -160,7 +160,7 @@ export default function Index() {
                                     className={
                                         'rounded-full border px-3 py-1 text-xs ' +
                                         (activeTag === t.id
-                                            ? 'border-gray-900 bg-gray-900 text-white'
+                                            ? 'border-indigo-600 bg-indigo-600 text-white'
                                             : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50')
                                     }
                                 >
@@ -204,7 +204,7 @@ export default function Index() {
                                     <div className="mt-4 flex justify-center gap-2">
                                         <Link
                                             href="/references/create"
-                                            className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800"
+                                            className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
                                         >
                                             Add reference
                                         </Link>
@@ -219,7 +219,8 @@ export default function Index() {
                             )}
                         </div>
                     ) : (
-                        <div className="overflow-hidden bg-white shadow-sm sm:rounded-lg">
+                        <>
+                        <div className="hidden overflow-hidden bg-white shadow-sm sm:block sm:rounded-lg">
                             <table className="min-w-full divide-y divide-gray-200">
                                 <thead className="bg-gray-50">
                                     <tr>
@@ -250,10 +251,6 @@ export default function Index() {
                                                 <div className="break-words text-xs text-gray-500">
                                                     {formatAuthors(ref.authors)}
                                                 </div>
-                                                <div className="mt-1 text-xs text-gray-500 sm:hidden">
-                                                    {TYPE_LABEL[ref.type] ?? ref.type}
-                                                    {ref.year ? ` · ${ref.year}` : ''}
-                                                </div>
                                             </td>
                                             <td className="hidden px-6 py-4 text-sm text-gray-600 sm:table-cell">
                                                 {TYPE_LABEL[ref.type] ?? ref.type}
@@ -281,6 +278,48 @@ export default function Index() {
                                 </tbody>
                             </table>
                         </div>
+
+                        {/* Cards below sm. The contract asks for a stacked
+                            card layout on mobile; a squeezed table is not the
+                            specified treatment. Same data, same actions. */}
+                        <ul className="space-y-3 sm:hidden">
+                            {rows.map((ref) => (
+                                <li
+                                    key={ref.id}
+                                    className="rounded-lg bg-white p-4 shadow-sm"
+                                >
+                                    <Link
+                                        href={`/references/${ref.id}`}
+                                        className="block break-words text-sm font-medium text-gray-900 hover:underline"
+                                    >
+                                        {ref.title}
+                                    </Link>
+                                    <p className="mt-1 break-words text-xs text-gray-500">
+                                        {formatAuthors(ref.authors)}
+                                    </p>
+                                    <p className="mt-1 text-xs text-gray-500">
+                                        {TYPE_LABEL[ref.type] ?? ref.type}
+                                        {ref.year ? ` · ${ref.year}` : ''}
+                                    </p>
+                                    <div className="mt-3 flex items-center gap-4 text-sm">
+                                        <Link
+                                            href={`/references/${ref.id}/edit`}
+                                            className="text-gray-600 hover:text-gray-900"
+                                        >
+                                            Edit
+                                        </Link>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPendingDelete(ref)}
+                                            className="text-red-600 hover:text-red-800"
+                                        >
+                                            Delete
+                                        </button>
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                        </>
                     )}
 
                     {!loading && references.links && references.links.length > 3 && (
@@ -295,7 +334,7 @@ export default function Index() {
                                         className={
                                             'rounded border px-3 py-1 text-sm ' +
                                             (link.active
-                                                ? 'border-gray-900 bg-gray-900 text-white'
+                                                ? 'border-indigo-600 bg-indigo-600 text-white'
                                                 : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50')
                                         }
                                     >

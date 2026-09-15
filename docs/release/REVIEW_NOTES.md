@@ -25,7 +25,7 @@ to fail before the fix.**
 | 9 | No generic exception rendering | Important | Addressed via the debug-mode release blocker + CSP |
 | 10 | Existence oracle: foreign row 403, missing row 404 | Minor | Fixed: owner-scoped binding, both 404 |
 | 11 | Validation ran before authorization on update (second oracle) | Minor | Fixed by the owner-scoped binding |
-| 12 | Session cookie flags not pinned | Minor | `SESSION_SECURE_COOKIE` documented for production |
+| 12 | Session cookie flags not pinned | Minor | Fixed: `SESSION_ENCRYPT` defaults ON; `SESSION_SECURE_COOKIE` defaults ON in production only (hardcoding true would break local HTTP login); override still honoured |
 
 ### Investigated and found safe
 
@@ -90,6 +90,26 @@ Both were caught by tests, and both are worth remembering.
    `<Dialog>` in place, and the element carrying `role="dialog"` collapsed to
    height 0 when its children were `fixed`. Playwright and screen readers were
    both right. Fixed by mirroring Breeze's own `Modal.jsx` structure.
+
+---
+
+## Round two — every Minor finding closed
+
+| Finding | Fix |
+|---|---|
+| M3 session flags not pinned | `SESSION_ENCRYPT` defaults ON. `SESSION_SECURE_COOKIE` defaults ON when `APP_ENV=production`, OFF otherwise — a Secure cookie is never sent over `http://localhost`, so pinning it true in `.env.example` would have silently broken local login. Explicit override still wins. |
+| M4 nonce via a container string key | The nonce now travels as a **request attribute** and is passed to the CSP builder as a **parameter**. The old form was global mutable state with a silent empty-string fallback. Also added `Cross-Origin-Resource-Policy` and `X-Permitted-Cross-Domain-Policies`. |
+| #13 validation feedback not associated | Every field now sets `aria-invalid` and `aria-describedby`; `TextInput` takes an `invalid` prop that paints the red border, so a field cannot show a message without the matching visual state. |
+| #14 design-contract drift | Contract is the source of truth, so the code moved to it: primary/active affordances use `indigo-600`, ALL-CAPS button labels removed, font switched to Instrument Sans. |
+| #15 no mobile card layout | Below `sm` the list renders as stacked cards; the table is desktop-only. Both layouts stay in the DOM so neither can be lost to a CSS regression. |
+
+**Two more tests that could not fail — found and fixed.** The first versions of the
+nonce and session-encryption tests passed even with the fix reverted. The session
+test read the booted config, which `.env` had already set, so it tested `.env`
+rather than the default. Clearing `$_ENV`/`$_SERVER` was not enough either —
+`env()` also reads `putenv`, a third store. The tests now load `config/session.php`
+with all three stores cleared, and were confirmed to go red when the default is
+reverted. The nonce test is renamed to claim only what it proves.
 
 ## The honest summary
 

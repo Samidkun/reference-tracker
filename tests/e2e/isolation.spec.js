@@ -19,7 +19,7 @@ test.describe('user isolation', () => {
         });
         await page.getByRole('button', { name: 'Add reference' }).click();
         await page.waitForURL('**/references');
-        await expect(page.getByText('ALICE SECRET PAPER')).toBeVisible();
+        await expect(page.getByRole('table').getByText('ALICE SECRET PAPER')).toBeVisible();
 
         // user B in a fresh context sees nothing
         const contextB = await browser.newContext();

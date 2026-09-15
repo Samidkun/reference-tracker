@@ -4,7 +4,7 @@ Personal literature/reference tracker. Tier **T1** (client-grade) — full
 pipeline: TDD, docs, E2E, hardening.
 
 **Stack:** Laravel 13.31 · Inertia 2.3 · React 19 · Vite 8 · Tailwind 4 · MariaDB
-**Verification:** 155 PHP tests / 508 assertions · 22 Playwright E2E · scanner battery 39/39
+**Verification:** 163 PHP tests / 524 assertions · 25 Playwright E2E · scanner battery 39/39
 
 ---
 
@@ -60,8 +60,8 @@ returned a 500 with 932 kB of stack trace.
 
 **The independent reviews found 30 more**, including a tag filter that made
 saved references appear to vanish, LIKE wildcard injection, an existence oracle,
-HSTS never firing behind a proxy, and an unbounded import. See
-`docs/release/REVIEW_NOTES.md`.
+HSTS never firing behind a proxy, and an unbounded import. All Important *and*
+Minor findings are now closed. See `docs/release/REVIEW_NOTES.md`.
 
 ---
 
@@ -86,8 +86,8 @@ HSTS never firing behind a proxy, and an unbounded import. See
 - [ ] `cp .env.example .env && php artisan key:generate`
 - [ ] `php artisan migrate`
 - [ ] `npm run build`
-- [ ] `./vendor/bin/phpunit` → 155 passing
-- [ ] `npm run test:e2e` → 22 passing
+- [ ] `./vendor/bin/phpunit` → 163 passing
+- [ ] `npm run test:e2e` → 25 passing
 - [ ] `python3 .githooks/../scan_secrets.py --help` → scanner present
 - [ ] `git ls-files | grep -E '^\.env'` → only `.env.example`
 - [ ] `APP_ENV=production APP_DEBUG=false php artisan serve` → open in a browser,

@@ -33,7 +33,13 @@ class SecurityHeaders
         // production and the whole app dies, because `route()` never exists.
         // A nonce keeps the strict policy AND allows that one script.
         $nonce = rtrim(strtr(base64_encode(random_bytes(16)), '+/', '-_'), '=');
-        app()->instance('csp-nonce', $nonce);
+
+        // The nonce travels on the REQUEST, not in the container under a string
+        // key. A container binding is global mutable state: any other request
+        // in the same process could read a stale value, and the CSP builder
+        // silently degraded to an empty nonce if nothing had bound it. A
+        // request attribute is scoped to exactly this request.
+        $request->attributes->set('csp_nonce', $nonce);
         View::share('cspNonce', $nonce);
 
         // Laravel's own @vite pipeline emits an INLINE prefetch script
@@ -54,6 +60,11 @@ class SecurityHeaders
             // Nothing here needs camera/mic/geolocation.
             'Permissions-Policy' => 'camera=(), microphone=(), geolocation=(), payment=()',
             'Cross-Origin-Opener-Policy' => 'same-origin',
+            // Responses are for this origin only; stops another site from
+            // embedding our JSON/asset responses as a sub-resource.
+            'Cross-Origin-Resource-Policy' => 'same-origin',
+            // No Flash/PDF cross-domain policy files are served here.
+            'X-Permitted-Cross-Domain-Policies' => 'none',
         ];
 
         // HSTS only makes sense over TLS; sending it on http://localhost
@@ -62,7 +73,7 @@ class SecurityHeaders
             $headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains';
         }
 
-        $headers['Content-Security-Policy'] = $this->contentSecurityPolicy();
+        $headers['Content-Security-Policy'] = $this->contentSecurityPolicy($nonce);
 
         foreach ($headers as $name => $value) {
             // Never clobber a header the app or a dependency already set.
@@ -74,7 +85,13 @@ class SecurityHeaders
         return $response;
     }
 
-    private function contentSecurityPolicy(): string
+    /**
+     * Build the CSP for this request.
+     *
+     * The nonce is a PARAMETER, deliberately: it is per-request data, and
+     * reading it back out of global state is how it silently became empty.
+     */
+    private function contentSecurityPolicy(string $nonce): string
     {
         // connect-src must include the Vite websocket in local dev, or HMR
         // is blocked. Building it conditionally keeps the directive appearing
@@ -106,8 +123,6 @@ class SecurityHeaders
             "base-uri 'self'",
             "object-src 'none'",
         ];
-
-        $nonce = app()->bound('csp-nonce') ? app('csp-nonce') : '';
 
         if (app()->environment('local', 'testing')) {
             // Vite dev server: HMR needs websockets and injects inline script.
