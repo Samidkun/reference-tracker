@@ -4,8 +4,8 @@ import InputLabel from '@/Components/InputLabel';
 import PrimaryButton from '@/Components/PrimaryButton';
 import SecondaryButton from '@/Components/SecondaryButton';
 import TextInput from '@/Components/TextInput';
-import { Head, Link, useForm } from '@inertiajs/react';
-import { useRef, useState } from 'react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
+import { useEffect, useRef, useState } from 'react';
 
 const TYPES = [
     ['journal', 'Journal article'],
@@ -48,13 +48,98 @@ export default function Form({ reference, tags }) {
         year: data.year === '' || data.year === null ? null : Number(data.year),
     }));
 
+    const [submitError, setSubmitError] = useState('');
+    const [dirty, setDirty] = useState(false);
+
+    // Snapshot the initial form state once, then compare on every change.
+    // Wrapping every setData call would work too, but it is easy to forget
+    // one - a snapshot cannot miss a field.
+    const initial = useRef(null);
+    if (initial.current === null) {
+        initial.current = JSON.stringify({
+            title: reference?.title ?? '',
+            authors: (reference?.authors ?? ['']).join('\n'),
+            year: reference?.year ?? '',
+            type: reference?.type ?? 'journal',
+            doi: reference?.doi ?? '',
+            url: reference?.url ?? '',
+            notes: reference?.notes ?? '',
+            tags: (reference?.tags ?? []).map((x) => x.id),
+        });
+    }
+
+    useEffect(() => {
+        setDirty(JSON.stringify(data) !== initial.current);
+    }, [data]);
+
+    // Warn before navigating away with unsaved edits.
+    //
+    // The FIRST version of this blocked every Inertia visit while the form was
+    // dirty - including the form's own submit - so saving silently did nothing.
+    // Two guards fix that:
+    //   1. only intercept visits that LEAVE the form, not the one we started
+    //   2. stop guarding the moment a submit begins
+    const [submitting, setSubmitting] = useState(false);
+
+    useEffect(() => {
+        const beforeUnload = (e) => {
+            if (!dirty || submitting) return undefined;
+            e.preventDefault();
+            e.returnValue = '';
+            return undefined;
+        };
+        window.addEventListener('beforeunload', beforeUnload);
+        return () => window.removeEventListener('beforeunload', beforeUnload);
+    }, [dirty, submitting]);
+
+    useEffect(() => {
+        if (!dirty || submitting) return undefined;
+
+        const off = router.on('before', (event) => {
+            const target = String(event.detail.visit.url ?? '');
+
+            // Our own submit navigates to /references - never block that.
+            if (target.includes('/references') && !target.includes('/create')) {
+                return;
+            }
+
+            // Leaving the form with unsaved edits: ask, and only block if the
+            // user declines. window.confirm is acceptable here (it is a
+            // navigation guard, not a destructive-action confirmation), but it
+            // must not fire for the submit path above.
+            if (!window.confirm('Discard your unsaved changes?')) {
+                event.preventDefault();
+            }
+        });
+
+        return () => off();
+    }, [dirty, submitting]);
+
     const submit = (e) => {
         e.preventDefault();
+        setSubmitError('');
+
+        setSubmitting(true);
+        setDirty(false);
+
+        const options = {
+            // Without these a 500 or a dropped connection leaves the form
+            // silent and the user with no idea anything happened.
+            onError: () => {
+                setSubmitting(false);
+                setSubmitError('Could not save. Check the fields and try again.');
+            },
+            onNetworkError: () => {
+                setSubmitting(false);
+                setSubmitError('Network problem — your changes were not saved. Try again.');
+            },
+            onFinish: () => setSubmitting(false),
+        };
 
         if (isEdit) {
-            put(`/references/${reference.id}`);
+            put(`/references/${reference.id}`, options);
         } else {
-            post('/references');
+            post('/references', options);
         }
     };
 
@@ -154,12 +239,17 @@ export default function Form({ reference, tags }) {
                             <InputLabel htmlFor="title" value="Title" />
                             <TextInput
                                 id="title"
-                                className="mt-1 block w-full"
+                                className={
+                                    'mt-1 block w-full ' +
+                                    (errors.title ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : '')
+                                }
                                 value={data.title}
                                 onChange={(e) => setData('title', e.target.value)}
+                                aria-invalid={errors.title ? 'true' : undefined}
+                                aria-describedby={errors.title ? 'title-error' : undefined}
                                 required
                             />
-                            <InputError className="mt-1" message={errors.title} />
+                            <InputError id="title-error" className="mt-1" message={errors.title} />
                         </div>
 
                         <div>
@@ -292,12 +382,24 @@ export default function Form({ reference, tags }) {
                             </div>
                         )}
 
+                        {submitError && (
+                            <div
+                                role="alert"
+                                className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+                            >
+                                {submitError}
+                            </div>
+                        )}
+
                         <div className="flex items-center gap-3 border-t border-gray-100 pt-4">
                             <PrimaryButton disabled={processing}>
                                 {isEdit ? 'Save changes' : 'Add reference'}
                             </PrimaryButton>
-                            <Link href="/references">
-                                <SecondaryButton type="button">Cancel</SecondaryButton>
+                            <Link
+                                href="/references"
+                                className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-widest text-gray-700 transition hover:bg-gray-50"
+                            >
+                                Cancel
                             </Link>
                         </div>
                     </form>

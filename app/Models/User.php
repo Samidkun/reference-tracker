@@ -17,6 +17,12 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
+    /** The references this user owns. */
+    public function references(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(\App\Models\Reference::class);
+    }
+
     /**
      * Get the attributes that should be cast.
      *

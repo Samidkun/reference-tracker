@@ -13,6 +13,13 @@ export default function AuthenticatedLayout({ header, children }) {
 
     return (
         <div className="min-h-screen bg-gray-100">
+            <a
+                href="#main-content"
+                className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-gray-900 focus:shadow"
+            >
+                Skip to content
+            </a>
+
             <nav className="border-b border-gray-100 bg-white">
                 <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                     <div className="flex h-16 justify-between">
@@ -85,7 +92,11 @@ export default function AuthenticatedLayout({ header, children }) {
                                         (previousState) => !previousState,
                                     )
                                 }
-                                className="inline-flex items-center justify-center rounded-md p-2 text-gray-400 transition duration-150 ease-in-out hover:bg-gray-100 hover:text-gray-500 focus:bg-gray-100 focus:text-gray-500 focus:outline-none"
+                                type="button"
+                                aria-label="Toggle navigation menu"
+                                aria-expanded={showingNavigationDropdown}
+                                aria-controls="mobile-navigation"
+                                className="inline-flex items-center justify-center rounded-md p-2 text-gray-400 transition duration-150 ease-in-out hover:bg-gray-100 hover:text-gray-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
                             >
                                 <svg
                                     className="h-6 w-6"
@@ -122,6 +133,7 @@ export default function AuthenticatedLayout({ header, children }) {
                 </div>
 
                 <div
+                    id="mobile-navigation"
                     className={
                         (showingNavigationDropdown ? 'block' : 'hidden') +
                         ' sm:hidden'
@@ -170,7 +182,7 @@ export default function AuthenticatedLayout({ header, children }) {
                 </header>
             )}
 
-            <main>{children}</main>
+            <main id="main-content">{children}</main>
         </div>
     );
 }

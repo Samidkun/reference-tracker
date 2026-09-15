@@ -16,8 +16,13 @@ Route::middleware('auth')->group(function () {
 
     // Literal routes MUST come before the {reference} wildcard.
     Route::get('/references/export', [ReferenceController::class, 'export'])->name('references.export');
-    Route::post('/references/import', [ReferenceController::class, 'import'])->name('references.import');
-    Route::post('/references/doi', [ReferenceController::class, 'doiLookup'])->name('references.doi');
+    // Throttled: both are authenticated but expensive (unbounded DB writes,
+    // or an outbound HTTP call per request). Without a limit, one account can
+    // exhaust the database or get the app rate-limited by Crossref.
+    Route::post('/references/import', [ReferenceController::class, 'import'])
+        ->middleware('throttle:10,1')->name('references.import');
+    Route::post('/references/doi', [ReferenceController::class, 'doiLookup'])
+        ->middleware('throttle:30,1')->name('references.doi');
 
     Route::get('/references/{reference}', [ReferenceController::class, 'show'])->name('references.show');
     Route::get('/references/{reference}/edit', [ReferenceController::class, 'edit'])->name('references.edit');

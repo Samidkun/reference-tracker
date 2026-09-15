@@ -64,13 +64,19 @@ class Reference extends Model
             return $query;
         }
 
-        $like = '%' . mb_strtolower($term) . '%';
+        // Escape LIKE metacharacters. Without this, searching for a literal
+        // "%" or "_" matches every row - a targeted search silently becomes
+        // "return the whole library", and a user searching for "100%" gets
+        // nonsense. (Bindings already prevent SQL injection; this is about
+        // the wildcard semantics of LIKE itself.)
+        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($term));
+        $like = '%' . $escaped . '%';
 
         return $query->where(function ($q) use ($like) {
-            $q->whereRaw('LOWER(title) LIKE ?', [$like])
-              ->orWhereRaw('LOWER(authors) LIKE ?', [$like])
-              ->orWhereRaw('LOWER(doi) LIKE ?', [$like])
-              ->orWhereRaw('CAST(year AS CHAR) LIKE ?', [$like]);
+            $q->whereRaw("LOWER(title) LIKE ? ESCAPE '\\\\'", [$like])
+              ->orWhereRaw("LOWER(authors) LIKE ? ESCAPE '\\\\'", [$like])
+              ->orWhereRaw("LOWER(doi) LIKE ? ESCAPE '\\\\'", [$like])
+              ->orWhereRaw("CAST(year AS CHAR) LIKE ? ESCAPE '\\\\'", [$like]);
         });
     }
 }

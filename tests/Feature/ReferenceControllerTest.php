@@ -15,6 +15,11 @@ use Tests\TestCase;
  * able to read, update, or delete another user's references, even by
  * guessing an id. Every "other user" case below is a real attack, not a
  * formality.
+ *
+ * Foreign rows return 404 rather than 403. Both deny access, but 403 vs 404
+ * lets an attacker distinguish "exists but not mine" from "does not exist" -
+ * an existence oracle over sequential ids. The route binding is scoped to the
+ * owner so both cases are indistinguishable.
  */
 class ReferenceControllerTest extends TestCase
 {
@@ -116,7 +121,9 @@ class ReferenceControllerTest extends TestCase
         $other = User::factory()->create();
         $ref = Reference::factory()->for($other)->create();
 
-        $this->actingAs($me)->get("/references/{$ref->id}")->assertForbidden();
+        // 404, not 403: a foreign row must be indistinguishable from a missing
+        // one, or an authenticated user can enumerate which ids exist.
+        $this->actingAs($me)->get("/references/{$ref->id}")->assertNotFound();
     }
 
     public function test_a_user_cannot_update_another_users_reference(): void
@@ -129,7 +136,7 @@ class ReferenceControllerTest extends TestCase
             'title' => 'Hijacked',
             'authors' => ['A, B'],
             'type' => 'journal',
-        ])->assertForbidden();
+        ])->assertNotFound();
 
         $this->assertDatabaseHas('references', ['id' => $ref->id, 'title' => 'Original']);
     }
@@ -140,7 +147,7 @@ class ReferenceControllerTest extends TestCase
         $other = User::factory()->create();
         $ref = Reference::factory()->for($other)->create();
 
-        $this->actingAs($me)->delete("/references/{$ref->id}")->assertForbidden();
+        $this->actingAs($me)->delete("/references/{$ref->id}")->assertNotFound();
 
         $this->assertDatabaseHas('references', ['id' => $ref->id]);
     }

@@ -41,7 +41,10 @@ class StoreReferenceRequest extends FormRequest
                     ->ignore($this->route('reference')?->id),
             ],
             'url'     => ['nullable', 'url', 'max:2048'],
-            'notes'   => ['nullable', 'string', 'max:20000'],
+            // max:15000 CHARACTERS is safe: 15,000 x 4 bytes = 60,000 bytes, under
+                // the TEXT ceiling. A char-based rule alone would allow 80,000
+                // bytes and fail inside the database.
+                'notes'   => ['nullable', 'string', 'max:15000'],
             'tags'    => ['nullable', 'array', 'max:20'],
             'tags.*'  => ['integer', 'exists:tags,id'],
         ];

@@ -40,6 +40,22 @@ class ImportBibtexRequest extends FormRequest
 
             if (! preg_match('/@\s*[a-zA-Z]+\s*\{/', $head)) {
                 $v->errors()->add('file', 'This file does not look like a BibTeX file.');
+
+                return;
+            }
+
+            // Cap the ENTRY count, not just the file size. A 5 MB file can hold
+            // tens of thousands of entries, each an INSERT inside one
+            // transaction - a 30,000-row import completed in ~6s, which is a
+            // trivial resource-exhaustion lever for any signed-in user.
+            // Rejecting loudly beats silently importing a partial library.
+            $count = preg_match_all('/@\s*[a-zA-Z]+\s*\{/', (string) file_get_contents($file->getRealPath()));
+
+            if ($count > 2000) {
+                $v->errors()->add(
+                    'file',
+                    "This file contains {$count} entries. The limit is 2000 per import — split it into smaller files."
+                );
             }
         });
     }

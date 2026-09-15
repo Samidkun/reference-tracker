@@ -1,6 +1,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import SecondaryButton from '@/Components/SecondaryButton';
+import ConfirmDialog from '@/Components/ConfirmDialog';
 import { Head, Link, router } from '@inertiajs/react';
+import { useState } from 'react';
 
 const TYPE_LABEL = {
     journal: 'Journal article',
@@ -20,26 +21,34 @@ function Row({ label, children }) {
 }
 
 export default function Show({ reference }) {
+    const [confirming, setConfirming] = useState(false);
+
     const remove = () => {
-        if (confirm(`Delete "${reference.title}"? This cannot be undone.`)) {
-            router.delete(`/references/${reference.id}`);
-        }
+        router.delete(`/references/${reference.id}`, {
+            onFinish: () => setConfirming(false),
+        });
     };
 
     return (
         <AuthenticatedLayout
             header={
-                <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-semibold leading-tight text-gray-800">
+                <div className="flex items-start justify-between gap-4">
+                    {/* min-w-0 + break-words: a 500-char unbroken title (a
+                        realistic paste from Zotero) otherwise stretched the
+                        page to ~6,600px and pushed these buttons off-screen. */}
+                    <h1 className="min-w-0 break-words text-xl font-semibold leading-tight text-gray-800">
                         {reference.title}
-                    </h2>
-                    <div className="flex items-center gap-2">
-                        <Link href={`/references/${reference.id}/edit`}>
-                            <SecondaryButton type="button">Edit</SecondaryButton>
+                    </h1>
+                    <div className="flex shrink-0 items-center gap-2">
+                        <Link
+                            href={`/references/${reference.id}/edit`}
+                            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        >
+                            Edit
                         </Link>
                         <button
                             type="button"
-                            onClick={remove}
+                            onClick={() => setConfirming(true)}
                             className="rounded-md border border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
                         >
                             Delete
@@ -119,7 +128,7 @@ export default function Show({ reference }) {
 
                         <div className="grid grid-cols-1 gap-1 py-3 sm:grid-cols-4">
                             <dt className="text-sm font-medium text-gray-500">Notes</dt>
-                            <dd className="whitespace-pre-wrap text-sm text-gray-900 sm:col-span-3">
+                            <dd className="whitespace-pre-wrap break-words text-sm text-gray-900 sm:col-span-3">
                                 {reference.notes || (
                                     <span className="text-gray-400">No notes</span>
                                 )}
@@ -137,6 +146,14 @@ export default function Show({ reference }) {
                     </div>
                 </div>
             </div>
+
+            <ConfirmDialog
+                show={confirming}
+                title="Delete this reference?"
+                description={`“${reference.title}” will be permanently removed. This cannot be undone.`}
+                onConfirm={remove}
+                onCancel={() => setConfirming(false)}
+            />
         </AuthenticatedLayout>
     );
 }

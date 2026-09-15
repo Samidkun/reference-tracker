@@ -110,7 +110,12 @@ class ImportBoundaryTest extends TestCase
         $res = $this->import($me, "@article{n,\n title = {N},\n author = {Doe, J},\n year = {2020},\n note = {{$notes}}\n}\n");
 
         $res->assertRedirect('/references');
-        $this->assertLessThanOrEqual(20000, mb_strlen((string) Reference::first()->notes));
+
+        // The cap is in BYTES, not characters: the column is TEXT (65,535
+        // bytes) while a character rule counts characters, so 20,000 four-byte
+        // characters (80,000 bytes) would pass validation and die in the DB.
+        $stored = (string) Reference::first()->notes;
+        $this->assertLessThanOrEqual(65535, strlen($stored), 'must fit the TEXT column in bytes');
     }
 
     public function test_an_unknown_type_falls_back_instead_of_failing(): void

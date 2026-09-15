@@ -26,9 +26,24 @@ class ReferenceController extends Controller
 {
     public function index(Request $request): Response
     {
+        // Tag filtering happens SERVER-SIDE, before paginate().
+        //
+        // It used to be a client-side .filter() over references.data - i.e.
+        // only the current page's 20 rows - while the pagination links were
+        // rendered for the whole result set. Selecting a tag whose references
+        // sat on page 2 produced "0 rows + No references yet", so the user
+        // concluded a saved reference was gone. Filtering here makes
+        // references.data AND references.links describe the same set.
+        $tagId = $request->query('tag');
+        $tagId = is_numeric($tagId) ? (int) $tagId : null;
+
         $references = Reference::query()
             ->where('user_id', Auth::id())
             ->search($request->query('q'))
+            ->when($tagId, fn ($q) => $q->whereHas(
+                'tags',
+                fn ($t) => $t->whereKey($tagId)->where('user_id', Auth::id())
+            ))
             ->with('tags')
             ->latest()
             ->paginate(20)
@@ -36,7 +51,10 @@ class ReferenceController extends Controller
 
         return Inertia::render('References/Index', [
             'references' => $references,
-            'filters'    => ['q' => $request->query('q', '')],
+            'filters'    => [
+                'q'   => $request->query('q', ''),
+                'tag' => $tagId,
+            ],
             'tags'       => Tag::where('user_id', Auth::id())->orderBy('name')->get(['id', 'name']),
         ]);
     }
@@ -201,6 +219,21 @@ class ReferenceController extends Controller
     }
 
     /**
+     * Truncate a string to a BYTE budget without splitting a multibyte
+     * character (which would produce invalid UTF-8 and fail the insert).
+     */
+    private function capBytes(string $value, int $maxBytes): string
+    {
+        if (strlen($value) <= $maxBytes) {
+            return $value;
+        }
+
+        $truncated = mb_strcut($value, 0, $maxBytes, 'UTF-8');
+
+        return rtrim($truncated);
+    }
+
+    /**
      * Coerce one parsed .bib entry into a row the schema will actually accept.
      *
      * WHY THIS EXISTS: the manual form validates every field, but the import
@@ -263,10 +296,11 @@ class ReferenceController extends Controller
             'url'      => isset($entry['url']) && $entry['url'] !== ''
                 ? mb_substr((string) $entry['url'], 0, 2048)
                 : null,
-            // matches the form's max:20000
-            'notes'    => isset($entry['notes']) && $entry['notes'] !== ''
-                ? mb_substr((string) $entry['notes'], 0, 20000)
-                : null,
+            // The column is TEXT = 65,535 BYTES, while the rule counts
+            // CHARACTERS. 20,000 four-byte characters is 80,000 bytes and
+            // dies inside the database. Cap by bytes so any input the schema
+            // accepts also fits.
+            'notes'    => $this->capBytes((string) ($entry['notes'] ?? ''), 60000) ?: null,
             'cite_key' => isset($entry['key']) && $entry['key'] !== ''
                 ? mb_substr((string) $entry['key'], 0, 255)
                 : null,

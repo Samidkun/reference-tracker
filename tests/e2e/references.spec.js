@@ -38,9 +38,10 @@ test.describe('reference library', () => {
 
         await expect(page.getByText('Attention Is All You Need (revised)')).toBeVisible();
 
-        // DELETE (accept the confirm dialog)
-        page.on('dialog', (d) => d.accept());
+        // DELETE — an in-page dialog now, not window.confirm
         await page.getByRole('button', { name: 'Delete' }).first().click();
+        await expect(page.getByRole('dialog')).toBeVisible();
+        await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
         await page.waitForURL('**/references');
 
         await expect(page.getByText('No references yet')).toBeVisible();
