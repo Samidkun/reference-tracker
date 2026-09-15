@@ -23,7 +23,12 @@ export default function Form({ reference, tags }) {
     const [doiBusy, setDoiBusy] = useState(false);
     const [doiError, setDoiError] = useState('');
 
-    const { data, setData, post, put, processing, errors } = useForm({
+    // useForm.submit() ignores any `data` option passed to post()/put(): it
+    // ALWAYS sends transform.current(dataRef.current) — verified in the
+    // library source. transform() is the only supported way to reshape the
+    // payload. Without it, `authors` went out as a raw newline string and the
+    // server rejected the request with "The authors field must be an array."
+    const { data, setData, post, put, processing, errors, transform } = useForm({
         title: reference?.title ?? '',
         authors: (reference?.authors ?? ['']).join('\n'),
         year: reference?.year ?? '',
@@ -34,22 +39,22 @@ export default function Form({ reference, tags }) {
         tags: (reference?.tags ?? []).map((t) => t.id),
     });
 
+    transform((data) => ({
+        ...data,
+        authors: data.authors
+            .split('\n')
+            .map((a) => a.trim())
+            .filter(Boolean),
+        year: data.year === '' || data.year === null ? null : Number(data.year),
+    }));
+
     const submit = (e) => {
         e.preventDefault();
 
-        const payload = {
-            ...data,
-            authors: data.authors
-                .split('\n')
-                .map((a) => a.trim())
-                .filter(Boolean),
-            year: data.year === '' ? null : Number(data.year),
-        };
-
         if (isEdit) {
-            put(`/references/${reference.id}`, { data: payload });
+            put(`/references/${reference.id}`);
         } else {
-            post('/references', { data: payload });
+            post('/references');
         }
     };
 

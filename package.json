@@ -4,11 +4,14 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "test:e2e": "playwright test",
+        "test:e2e:ui": "playwright test --ui",
+        "test:php": "php artisan test"
     },
     "dependencies": {
         "@headlessui/react": "^2.0.0",
-        "@inertiajs/react": "^3.7.1",
+        "@inertiajs/react": "^2.3.28",
         "@vitejs/plugin-react": "^6.1.1",
         "react": "^19.3.0",
         "react-dom": "^19.3.0",
