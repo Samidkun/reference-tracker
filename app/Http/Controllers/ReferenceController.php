@@ -17,6 +17,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -112,32 +113,76 @@ class ReferenceController extends Controller
         );
     }
 
+    /**
+     * Import a .bib file.
+     *
+     * Three properties this must hold, all of which were broken before:
+     *
+     *  1. ATOMIC — either the whole file lands or none of it does. A failure
+     *     halfway through used to leave the earlier rows committed.
+     *  2. TOLERANT OF DUPLICATES — a DOI that already exists (in the file or
+     *     in the library) is skipped and counted, not thrown as a unique-index
+     *     violation that 500s the request.
+     *  3. NEVER SURPRISING — the flash message reports what happened, so the
+     *     user is not left guessing why 40 entries became 37.
+     */
     public function import(ImportBibtexRequest $request): RedirectResponse
     {
         $entries = (new BibtexParser())->parse(
             (string) file_get_contents($request->file('file')->getRealPath())
         );
 
+        $userId = Auth::id();
         $created = 0;
+        $skipped = 0;
 
-        foreach ($entries as $entry) {
-            Reference::create([
-                'user_id' => Auth::id(),
-                'title'   => $entry['title'] ?: 'Untitled',
-                'authors' => $entry['authors'] ?: [],
-                'year'    => $entry['year'],
-                'type'    => $entry['type'],
-                'doi'     => $entry['doi'],
-                'url'     => $entry['url'],
-                'notes'   => $entry['notes'],
-                'cite_key' => $entry['key'],
-            ]);
+        DB::transaction(function () use ($entries, $userId, &$created, &$skipped) {
+            // Seed the "seen" set with DOIs this user already owns, so a
+            // re-import of the same file does not duplicate the library.
+            $seen = Reference::where('user_id', $userId)
+                ->whereNotNull('doi')
+                ->pluck('doi')
+                ->map(fn ($d) => mb_strtolower($d))
+                ->all();
+            $seen = array_flip($seen);
 
-            $created++;
+            foreach ($entries as $entry) {
+                $doi = $entry['doi'] !== null && $entry['doi'] !== ''
+                    ? mb_strtolower((string) $entry['doi'])
+                    : null;
+
+                if ($doi !== null && isset($seen[$doi])) {
+                    $skipped++;
+
+                    continue;
+                }
+
+                Reference::create([
+                    'user_id'  => $userId,
+                    'title'    => mb_substr($entry['title'] ?: 'Untitled', 0, 500),
+                    'authors'  => $entry['authors'] ?: [],
+                    'year'     => $entry['year'],
+                    'type'     => $entry['type'],
+                    'doi'      => $entry['doi'],
+                    'url'      => $entry['url'] !== null ? mb_substr((string) $entry['url'], 0, 2048) : null,
+                    'notes'    => $entry['notes'],
+                    'cite_key' => $entry['key'] !== null ? mb_substr((string) $entry['key'], 0, 255) : null,
+                ]);
+
+                if ($doi !== null) {
+                    $seen[$doi] = true;
+                }
+
+                $created++;
+            }
+        });
+
+        $message = "Imported {$created} reference(s).";
+        if ($skipped > 0) {
+            $message .= " Skipped {$skipped} duplicate(s).";
         }
 
-        return redirect()->route('references.index')
-            ->with('success', "Imported {$created} reference(s).");
+        return redirect()->route('references.index')->with('success', $message);
     }
 
     public function doiLookup(DoiLookupRequest $request, DoiResolver $resolver): JsonResponse
