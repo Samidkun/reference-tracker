@@ -20,22 +20,22 @@
 | 3 — Spec | ✅ | Design contract = spec |
 | 4 — Plan | ✅ | Dikerjakan langsung, solo |
 | 5 — Workspace | ✅ | `main`, solo, tanpa worktree |
-| 6 — TDD | ✅ **5 cycle** | 107 test, 293 assertions |
+| 6 — TDD | ✅ **5 cycle** | 113 test, 309 assertions |
 | 7 — Execute | ✅ | UI + logic + HTTP lengkap |
 | 8 — Review | ✅ | **2 reviewer independen**. Backend nemu 4 bug baru |
 | 9 — Debug | ✅ | **17 bug** ketemu & diperbaiki |
 | 10 — Prod Hardening | ✅ | Search, import atomik, security headers + CSP |
-| 11 — Docs + E2E | ✅ | **E2E 11/11** + End-User Guide + Runbook |
+| 11 — Docs + E2E | ✅ | **E2E 14/14** + End-User Guide + Runbook |
 | 12 — UAT | ⬜ | Belum — butuh stakeholder kalau ada handover |
 | 13 — Verify | ✅ | Suite + HTTP nyata dijalankan ulang, output dibaca |
 | 14 — Ship | 🔶 | Repo siap; nunggu keputusan lu |
 | 16 — Retro | ✅ | `~/.hermes/retros/2026-09.md` |
 
-**Hasil akhir: 107 PHP test / 293 assertions ✅ · 11 E2E ✅ · 10 commit**
+**Hasil akhir: 113 PHP test / 309 assertions ✅ · 14 E2E ✅**
 
 ---
 
-## 🔴 17 BUG NYATA
+## 🔴 21 BUG NYATA
 
 Semua ketemu karena dijalankan di project beneran. **Yang paling penting: 72 test backend hijau sementara UI-nya gak bisa nyimpen data sama sekali.**
 
@@ -137,6 +137,28 @@ Form memvalidasi, import tidak — skema sama, dua trust boundary, satu tak terj
 **Diuji langsung: SEMUA 403** — unsigned GET/PUT, `shell.php`, path traversal `../.env`.
 **Ternyata aman**, karena `visibility` tidak di-set → default `private` → butuh signed URL.
 **Tapi aman karena kebetulan default.** Ditambah 6 test yang mengunci perilaku ini; dibuktiin merah kalau `visibility => 'public'` ditambahkan.
+
+---
+
+### #18 — Import path tidak divalidasi (Stage 8, reviewer independen)
+Sudah dicatat di #17.
+
+### #19 — Script inline Vite prefetch tanpa nonce (Stage 13, verifikasi production)
+**Dampak: app MATI TOTAL di production.**
+Halaman memuat **2 script inline**: tabel route Ziggy (~23 kB) dan prefetch Vite (~7 kB). CSP produksi `script-src 'self'` tanpa nonce → browser blokir keduanya → `route()` undefined → semua halaman gagal.
+**Kenapa test gak nangkep:** test backend pakai `withoutVite()` yang membuang `@vite` — jadi script-nya **tidak pernah dirender**. E2E jalan di dev server = policy lokal.
+**Fix:** nonce per-request + `Vite::useCspNonce()`.
+
+### #20 — `style-src` memblokir progress bar Inertia (Stage 13, browser production)
+**Dampak: CSP violation di SETIAP page load.**
+nprogress menyuntik blok `<style>` runtime, tanpa hook nonce.
+**Fix:** `'unsafe-inline'` di `style-src` saja (CSS inline gak bisa eksekusi kode; script tetap terkunci nonce). Didokumentasikan sebagai konsesi terbatas.
+
+### #21 — Literal IPv6 tidak valid sebagai sumber CSP (Stage 13)
+**Dampak: browser menolak `ws://[::1]:5173`, log violation tiap load.**
+**Fix:** pakai `ws://localhost:5173`.
+
+**Catatan penting:** #19-#21 **cuma ketemu karena menjalankan app dengan `APP_ENV=production` di browser nyata.** Semua test lain hijau. Ini pelajaran terbesar dari seluruh run ini — dan sudah gw tulis ke SOP.
 
 ---
 
