@@ -48,8 +48,16 @@ class Reference extends Model
      *
      * Kept on the model so the controller and the tests share one definition.
      */
-    public function scopeSearch($query, ?string $term)
+    public function scopeSearch($query, mixed $term)
     {
+        // `mixed`, not `?string`. The value comes straight from the query
+        // string, where `?q[]=x` makes Laravel hand over an ARRAY. A `?string`
+        // signature turned that into a TypeError -> HTTP 500 with ~930 kB of
+        // stack trace. Anything that is not a scalar is simply "no filter".
+        if (! is_string($term) && ! is_numeric($term)) {
+            return $query;
+        }
+
         $term = trim((string) $term);
 
         if ($term === '') {
