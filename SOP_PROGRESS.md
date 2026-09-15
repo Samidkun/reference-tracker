@@ -28,14 +28,14 @@
 | 11 — Docs + E2E | ✅ | **E2E 14/14** + End-User Guide + Runbook |
 | 12 — UAT | ⬜ | Belum — butuh stakeholder kalau ada handover |
 | 13 — Verify | ✅ | Suite + HTTP nyata dijalankan ulang, output dibaca |
-| 14 — Ship | 🔶 | Repo siap; nunggu keputusan lu |
+| 14 — Ship | ✅ | Branch `release/v1.0.0` + tag `v1.0.0` + PR body + `PUSH.sh` (gate teruji) |
 | 16 — Retro | ✅ | `~/.hermes/retros/2026-09.md` |
 
 **Hasil akhir: 133 PHP test / 369 assertions ✅ · 14 E2E ✅**
 
 ---
 
-## 🔴 22 BUG NYATA
+## 🔴 24 BUG NYATA
 
 Semua ketemu karena dijalankan di project beneran. **Yang paling penting: 72 test backend hijau sementara UI-nya gak bisa nyimpen data sama sekali.**
 
@@ -168,6 +168,21 @@ nprogress menyuntik blok `<style>` runtime, tanpa hook nonce.
 **Akar masalah:** tipe di signature dijadikan satu-satunya penjaga — input buruk jadi crash, bukan filter kosong. Kelas yang sama dengan #17 (import path).
 **Fix:** terima `mixed`, non-scalar = "tanpa filter".
 **Bukti:** `q[]=x`, `q[foo]=x`, `q[][]=x` → HTTP 200, nol kebocoran (dulu 500 + 932 KB).
+
+---
+
+### #23 — `.env.bak` ter-track, bawa `APP_KEY` asli (Stage 14)
+**Dampak: kunci enkripsi bocor sejak commit pertama.**
+`APP_KEY` **identik** dengan `.env` asli. Kunci ini mengenkripsi session cookie + kolom `encrypted` → siapa pun yang punya kunci bisa memalsukan sesi user mana pun. **Bocor kunci = bocor database.**
+**Scanner gw bilang CLEAN** — dua gap: `app_key` gak ada di daftar nama key, dan nilai `base64:<44 char>` gak match pola apa pun.
+**Fix:** deteksi `base64:[A-Za-z0-9+/]{40,}`, tambah `app_key`, gitignore semua varian `.env.*` (kecuali `.env.example`).
+**Tindakan:** `APP_KEY` **dirotasi** + `.env.bak` **dibersihkan dari seluruh history** (`filter-branch` + reflog expire + gc). Diverifikasi: 428 blob di-scan, **0 secret**.
+
+### #24 — `PUSH.sh` gw salah nolak rilis sehat (Stage 14)
+**Dampak: gate palsu, kebalikan dari gate bohong.**
+`phpunit --quiet` **exit 2** di PHPUnit 12 padahal suite hijau (diverifikasi: exit 0 tanpa flag, exit 2 dengan flag). Preflight nolak rilis yang sehat.
+**Fix:** jalan tanpa `--quiet`, baca exit code asli.
+**Bukti gate:** diuji 4 skenario — secret di history → REFUSING ✓, `public/hot` nyangkut → REFUSING ✓, tree kotor → REFUSING ✓, bersih → lolos ✓.
 
 ---
 
