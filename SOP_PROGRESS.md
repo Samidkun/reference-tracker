@@ -20,7 +20,7 @@
 | 3 — Spec | ✅ | Design contract = spec |
 | 4 — Plan | ✅ | Dikerjakan langsung, solo |
 | 5 — Workspace | ✅ | `main`, solo, tanpa worktree |
-| 6 — TDD | ✅ **5 cycle** | 133 test, 369 assertions |
+| 6 — TDD | ✅ **5 cycle** | 163 test, 524 assertions |
 | 7 — Execute | ✅ | UI + logic + HTTP lengkap |
 | 8 — Review | ✅ | **2 reviewer independen**. Backend nemu 4 bug baru |
 | 9 — Debug | ✅ | **17 bug** ketemu & diperbaiki |
@@ -31,7 +31,7 @@
 | 14 — Ship | ✅ | Branch `release/v1.0.0` + tag `v1.0.0` + PR body + `PUSH.sh` (gate teruji) |
 | 16 — Retro | ✅ | `~/.hermes/retros/2026-09.md` |
 
-**Hasil akhir: 133 PHP test / 369 assertions ✅ · 14 E2E ✅**
+**Hasil akhir: 163 PHP test / 524 assertions ✅ · 25 E2E ✅**
 
 ---
 
@@ -279,6 +279,33 @@ b501565 feat(data): references + tags models, migrations, factories
 ```
 
 ---
+
+## Temuan Reviewer Independen — SEMUA DITUTUP
+
+Dua reviewer (backend 12 temuan, frontend 18 temuan = **30 total**) jalan
+paralel tanpa akses ke penalaran penulis. **Semua Critical, Important, dan
+Minor sudah ditutup**, masing-masing dengan test yang dibuktikan gagal dulu.
+
+Yang paling berbahaya:
+- Filter tag + pagination saling menghapus → referensi tersimpan tampak hilang
+- LIKE wildcard injection (`%` mengembalikan seluruh library)
+- Existence oracle (403 vs 404 membocorkan id mana yang ada)
+- HSTS & flag Secure tidak pernah aktif di belakang proxy TLS
+- Import tanpa batas (30.000 baris dalam ~6 detik)
+
+### Pelajaran terpenting dari run ini
+
+**Dua test gw lolos-palsu.** Gw revert fix-nya dan test-nya tetap hijau:
+- Test enkripsi session membaca config yang sudah di-set `.env` — jadi menguji
+  `.env`, bukan default-nya. Membersihkan `$_ENV`/`$_SERVER` pun tidak cukup:
+  `env()` juga membaca `putenv`, penyimpanan ketiga yang gw lupakan.
+- Test nonce lolos di kedua implementasi karena dalam satu request keduanya
+  menghasilkan nilai sama.
+
+**Test yang tetap hijau setelah fix dilepas lebih buruk daripada tidak ada
+test** — dia mengubah klaim tak terverifikasi menjadi seolah terverifikasi.
+Aturan ini sekarang tertulis di SOP (Stage 11) dan di
+`references/integration-hazards.md` entri #18-20.
 
 ## Sisa Kerjaan (jujur)
 
