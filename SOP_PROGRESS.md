@@ -20,7 +20,7 @@
 | 3 — Spec | ✅ | Design contract = spec |
 | 4 — Plan | ✅ | Dikerjakan langsung, solo |
 | 5 — Workspace | ✅ | `main`, solo, tanpa worktree |
-| 6 — TDD | ✅ **5 cycle** | 113 test, 309 assertions |
+| 6 — TDD | ✅ **5 cycle** | 133 test, 369 assertions |
 | 7 — Execute | ✅ | UI + logic + HTTP lengkap |
 | 8 — Review | ✅ | **2 reviewer independen**. Backend nemu 4 bug baru |
 | 9 — Debug | ✅ | **17 bug** ketemu & diperbaiki |
@@ -31,11 +31,11 @@
 | 14 — Ship | 🔶 | Repo siap; nunggu keputusan lu |
 | 16 — Retro | ✅ | `~/.hermes/retros/2026-09.md` |
 
-**Hasil akhir: 113 PHP test / 309 assertions ✅ · 14 E2E ✅**
+**Hasil akhir: 133 PHP test / 369 assertions ✅ · 14 E2E ✅**
 
 ---
 
-## 🔴 21 BUG NYATA
+## 🔴 22 BUG NYATA
 
 Semua ketemu karena dijalankan di project beneran. **Yang paling penting: 72 test backend hijau sementara UI-nya gak bisa nyimpen data sama sekali.**
 
@@ -162,7 +162,20 @@ nprogress menyuntik blok `<style>` runtime, tanpa hook nonce.
 
 ---
 
+### #22 — Query string malformed → 500 + bocor 932 KB internals (Stage 8, reviewer)
+**Dampak: crash + kebocoran informasi.**
+`GET /references?q[]=x` bikin Laravel kasih **array** ke `scopeSearch(?string $term)` → TypeError → HTTP 500. Dengan `APP_DEBUG=true`, 500-nya render **932 KB stack trace** berisi SQLSTATE + path vendor.
+**Akar masalah:** tipe di signature dijadikan satu-satunya penjaga — input buruk jadi crash, bukan filter kosong. Kelas yang sama dengan #17 (import path).
+**Fix:** terima `mixed`, non-scalar = "tanpa filter".
+**Bukti:** `q[]=x`, `q[foo]=x`, `q[][]=x` → HTTP 200, nol kebocoran (dulu 500 + 932 KB).
+
+---
+
 ## ⚠️ KOREKSI DIRI
+
+**PHPUnit 12 (bukan kode):** anotasi `@dataProvider` **diabaikan** — test data-driven gw diam-diam tidak jalan. Harus pakai atribut `#[DataProvider('method')]`.
+
+**Assertion gw salah lagi:** `search(123)` → 0 hasil itu **benar** (123 = istilah pencarian asli), bukan "tanpa filter". Yang benar: hanya non-scalar/null/'' yang berarti tanpa filter.
 
 **Assertion test salah, bukan kode** (cycle 2, 4, dan E2E):
 - Cycle 2: assert `'article'` (tipe BibTeX), spec = tipe internal (`journal`).
