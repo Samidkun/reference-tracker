@@ -60,12 +60,22 @@ class SecurityHeaders
 
     private function contentSecurityPolicy(): string
     {
+        // connect-src must include the Vite websocket in local dev, or HMR
+        // is blocked. Building it conditionally keeps the directive appearing
+        // exactly ONCE — a duplicated directive is technically valid but the
+        // browser uses only the last one, which silently drops the first.
+        $connect = ["'self'", 'https://api.crossref.org'];
+        if (app()->environment('local', 'testing')) {
+            $connect[] = 'ws://localhost:5173';
+            $connect[] = 'ws://[::1]:5173';
+        }
+
         $directives = [
             "default-src 'self'",
             "img-src 'self' data:",
             "font-src 'self' data: https://fonts.bunny.net",
             "style-src 'self' https://fonts.bunny.net",
-            "connect-src 'self' https://api.crossref.org",
+            'connect-src ' . implode(' ', $connect),
             "form-action 'self'",
             "frame-ancestors 'none'",
             "base-uri 'self'",
@@ -76,7 +86,6 @@ class SecurityHeaders
             // Vite dev server: HMR needs websockets, and the dev client is
             // injected inline.
             $directives[] = "script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:5173 http://[::1]:5173";
-            $directives[] = "connect-src 'self' ws://localhost:5173 ws://[::1]:5173 https://api.crossref.org";
         } else {
             $directives[] = "script-src 'self'";
             $directives[] = "upgrade-insecure-requests";
